@@ -1,12 +1,12 @@
--- ============================================================
+
 -- ESQUEMA DE BASE DE DATOS — DETECCIÓN DE FRAUDE
 -- Sistema: NovaPay ML
 -- Motor:  SQL Server (T-SQL)
--- ============================================================
 
--- ============================================================
+
+
 -- 1. CLIENTES
--- ============================================================
+
 CREATE TABLE Clientes (
     id_cliente          VARCHAR(12)     NOT NULL,
     tipo_cliente        VARCHAR(20)     NOT NULL,
@@ -29,9 +29,9 @@ CREATE TABLE Clientes (
 CREATE INDEX IX_Clientes_pais ON Clientes (customer_country);
 CREATE INDEX IX_Clientes_tipo ON Clientes (tipo_cliente);
 
--- ============================================================
+
 -- 2. CUENTAS (origen)
--- ============================================================
+
 CREATE TABLE Cuentas (
     id_cuenta           VARCHAR(12)     NOT NULL,
     id_cliente          VARCHAR(12)     NOT NULL,
@@ -54,9 +54,9 @@ CREATE TABLE Cuentas (
 CREATE INDEX IX_Cuentas_cliente ON Cuentas (id_cliente);
 CREATE INDEX IX_Cuentas_estado ON Cuentas (estado_cuenta);
 
--- ============================================================
+
 -- 3. TARJETAS
--- ============================================================
+
 CREATE TABLE Tarjetas (
     id_tarjeta                      VARCHAR(12)     NOT NULL,
     id_cuenta                       VARCHAR(12)     NOT NULL,
@@ -79,9 +79,9 @@ CREATE INDEX IX_Tarjetas_cuenta ON Tarjetas (id_cuenta);
 CREATE INDEX IX_Tarjetas_cliente ON Tarjetas (id_cliente);
 CREATE INDEX IX_Tarjetas_estado ON Tarjetas (estado_tarjeta);
 
--- ============================================================
+
 -- 4. CUENTAS DESTINO (catálogo de beneficiarios)
--- ============================================================
+
 CREATE TABLE Cuentas_Destino (
     cuenta_destino      VARCHAR(34)     NOT NULL,
     destino_alto_riesgo BIT             NOT NULL DEFAULT 0,
@@ -93,9 +93,9 @@ CREATE TABLE Cuentas_Destino (
 CREATE INDEX IX_Destino_riesgo ON Cuentas_Destino (destino_alto_riesgo)
     WHERE destino_alto_riesgo = 1;
 
--- ============================================================
+
 -- 5. TRANSACCIONES (tabla principal del modelo ML)
--- ============================================================
+
 CREATE TABLE Transacciones (
     id_transaccion                      VARCHAR(12)     NOT NULL,
     id_cliente                          VARCHAR(12)     NOT NULL,
@@ -152,9 +152,9 @@ CREATE INDEX IX_Transacciones_noche        ON Transacciones (is_night) INCLUDE (
 CREATE INDEX IX_Transacciones_fraude       ON Transacciones (IS_FRAUD) WHERE IS_FRAUD = 1;
 CREATE INDEX IX_Transacciones_destino_riesgo ON Transacciones (destino_alto_riesgo) INCLUDE (IS_FRAUD);
 
--- ============================================================
+
 -- VISTA PARA ML — Planas sin joins
--- ============================================================
+
 CREATE OR ALTER VIEW vw_Transacciones_ML AS
 SELECT
     t.id_transaccion,
