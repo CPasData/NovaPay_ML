@@ -127,8 +127,9 @@ CREATE TABLE Transacciones (
     geolocalizacion                     VARCHAR(30)     NOT NULL,
     -- Destino
     destino_alto_riesgo                 BIT             NOT NULL DEFAULT 0,
-    -- Etiqueta
+    -- Etiquetas
     IS_FRAUD                            BIT             NOT NULL DEFAULT 0,
+    IMPACTO_FRAUDE                      TINYINT         NOT NULL DEFAULT 0,
 
     CONSTRAINT PK_Transacciones PRIMARY KEY (id_transaccion),
     CONSTRAINT FK_Transacciones_Clientes FOREIGN KEY (id_cliente) REFERENCES Clientes(id_cliente),
@@ -140,7 +141,8 @@ CREATE TABLE Transacciones (
     CONSTRAINT CK_Transacciones_pin CHECK (numero_pin_disponibles BETWEEN 0 AND 3),
     CONSTRAINT CK_Transacciones_importe CHECK (importe_transaccion > 0),
     CONSTRAINT CK_Transacciones_tiempo_ultima CHECK (tiempo_desde_ultima_transaccion >= 0),
-    CONSTRAINT CK_Transacciones_ultima_hora CHECK (numero_transacciones_ultima_hora >= 0)
+    CONSTRAINT CK_Transacciones_ultima_hora CHECK (numero_transacciones_ultima_hora >= 0),
+    CONSTRAINT CK_Transacciones_impacto CHECK (IMPACTO_FRAUDE BETWEEN 0 AND 3)
 );
 
 -- Índices principales para el modelo ML y reporting
@@ -195,8 +197,9 @@ SELECT
     t.operacion_pais,
     t.operacion_region,
     t.destino_alto_riesgo,
-    -- Etiqueta
-    t.IS_FRAUD
+    -- Etiquetas
+    t.IS_FRAUD,
+    t.IMPACTO_FRAUDE
 FROM Transacciones t
 JOIN Clientes c  ON c.id_cliente  = t.id_cliente
 JOIN Cuentas cu  ON cu.id_cuenta  = t.id_cuenta

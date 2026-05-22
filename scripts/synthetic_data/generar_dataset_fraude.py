@@ -298,6 +298,14 @@ for _ in range(N):
 
     if row['IS_FRAUD'] == 1:
         c['numero_fraudes_ultimo_ano'] += 1
+        if row['importe_transaccion'] < 500:
+            row['IMPACTO_FRAUDE'] = 1  # Bajo impacto
+        elif row['importe_transaccion'] < 2000:
+            row['IMPACTO_FRAUDE'] = 2  # Medio impacto
+        else:
+            row['IMPACTO_FRAUDE'] = 3  # Alto impacto
+    else:
+        row['IMPACTO_FRAUDE'] = 0      # No fraude
 
     registros.append(row)
 
@@ -328,7 +336,7 @@ columnas_final = [
     'operacion_pais', 'operacion_region',
     'direccion_ip_origen', 'geolocalizacion',
     'cuenta_destino', 'destino_alto_riesgo',
-    'IS_FRAUD',
+    'IS_FRAUD', 'IMPACTO_FRAUDE',
 ]
 
 df = df[columnas_final]
