@@ -1,10 +1,10 @@
 # Contexto del EDA — NovaPay Operación Centinela (Ronda 1)
 
-> Documento de traspaso generado el 22/05/2026.
-> Autor del análisis hasta este punto: Juan Antonio (Data Science — Blue Team, Grupo 2).
+> Documento de traspaso. Última actualización: **23/05/2026**.
+> Autor del análisis: Juan Antonio (Data Science — Blue Team, Grupo 2).
 > Este documento está pensado para que un compañero pueda retomar el trabajo sin perder contexto.
 
-> **Objetivo de esta sesión:** dejar el EDA terminado y bien presentado. El modelado y el feature engineering son el siguiente bloque, y lo abordaremos juntos una vez el EDA esté cerrado — es el flujo natural: primero entender bien los datos, luego decidir cómo transformarlos y qué modelo usar.
+> **Estado actual:** el EDA está prácticamente cerrado. El notebook ordenado (`EDA_ordenado.ipynb`) tiene estructura completa, análisis hecho e interpretaciones escritas. **El único paso que queda antes de pasar al modelado** es tratar dos anomalías del dataset que ya están diagnosticadas — están explicadas en detalle en la sección 5 de este documento. Es trabajo concreto y acotado, no hay que tomar decisiones de diseño: está todo decidido, solo hay que implementarlo.
 
 ---
 
@@ -130,73 +130,129 @@ Se analizaron las siguientes combinaciones:
 
 ---
 
-## 3. Lo que falta por hacer
+## 3. Lo que ya está hecho
 
-> Todo lo de esta sección es para cerrar el EDA. Una vez esté hecho, el notebook queda listo para entregarlo como documentación y para que el modelado arranque con una base sólida.
+### 3.1 Análisis completado ✅
 
-### 3.1 Análisis pendiente
+- ✅ Outliers en variables numéricas (boxplots + tabla IQR + escala logarítmica)
+- ✅ Distribuciones de saldo, volumen, antigüedad, tiempo desde última transacción (fraude vs no fraude)
+- ✅ Visualización del desbalanceo de clases con reflexión sobre impacto en el modelado
+- ✅ Investigación de `cuenta_origen` — resuelta, ver sección 5
+- ✅ Análisis cross-border: 10% de operaciones en país diferente al cliente → fraud rate 26.7% vs 14.0%
+- ✅ Análisis de `tenure` y `antiguedad_tarjeta_dias`
+- ✅ Análisis de `tiempo_desde_ultima_transaccion` (confirmado en segundos, max ~174 días)
+- ✅ Análisis de `numero_fraudes_ultimo_ano` — resuelta, ver sección 5
 
-- [ ] **Outliers en variables numéricas continuas** — No hay análisis de outliers para `saldo_actual`, `importe_transaccion`, `volumen_saliente/entrante_30_dias`, `tiempo_desde_ultima_transaccion`, etc. Hace falta al menos boxplots o IQR analysis, especialmente relevante para el modelo.
-- [ ] **Distribución de variables de cuenta/saldo no exploradas** — `saldo_actual`, `saldo_medio_30_dias`, `volumen_entrante_30_dias`, `volumen_saliente_30_dias`, `importe_medio_mensual`, `desviacion_estandar_mensual`, `tenure`, `tiempo_desde_ultima_transaccion` no tienen histograma ni KDE propio con comparativa fraude/no fraude.
-- [ ] **Visualización explícita del desbalanceo de clases** — Solo se ve en `.describe()` (media IS_FRAUD = 0.1526). Hace falta un gráfico claro (pie o barplot) que muestre las proporciones, y una reflexión sobre cómo afectará al modelado (class_weight, SMOTE, métricas a usar...).
-- [ ] **Investigar `cuenta_origen`** — Identificar si hay cuentas con fraud rate del 100% o próximo. Si existen, ¿son pocas cuentas? ¿El dataset las incluyó con intención? Esto puede afectar al modelo (data leakage si esas cuentas aparecen en train y test).
-- [ ] **Análisis geográfico cross-border** — El heatmap `customer_country × operacion_pais` está generado pero no interpretado. Falta calcular explícitamente qué % de transacciones son cross-border (país del cliente ≠ país de la operación) y si eso eleva el fraude.
-- [ ] **Análisis de `tenure` y `antiguedad_tarjeta_dias`** — No se han explorado en relación con el fraude. Los clientes nuevos o con tarjetas recién creadas pueden ser más vulnerables.
-- [ ] **Análisis de `tiempo_desde_ultima_transaccion`** — La unidad parece ser segundos (max ~15M ≈ 174 días), pero no está documentado. Falta explorar si transacciones muy rápidas (tiempo bajo) o muy espaciadas tienen mayor fraude rate.
+### 3.2 Organización del notebook ✅
 
-### 3.2 Features derivadas a documentar en el EDA (solo apuntar la idea, no implementar)
+- ✅ `EDA_ordenado.ipynb` creado con secciones Markdown, comentarios de código e interpretaciones
+- ✅ Estructura: Setup → Carga → Univariante → Bivariante → Correlaciones → Interacciones
+- ✅ 16 celdas interpretativas añadidas (una por bloque de análisis)
 
-El EDA debe terminar con una lista clara de qué variables nuevas tendría sentido crear. No hace falta construirlas aquí — eso va en el notebook de feature engineering. Lo que sí conviene dejar escrito en el EDA es el razonamiento detrás de cada una, para que cuando lleguemos al modelado ya tengamos la lógica pensada:
+### 3.3 Pendiente — conclusiones finales
 
-- **Flag cross-border** — `operacion_pais != customer_country` → ¿opera desde un país diferente al del cliente?
-- **Ratio importe / saldo_actual** — ¿La transacción consume un % alto del saldo disponible?
-- **Ratio volumen_saliente / volumen_entrante** — ¿La cuenta solo "saca" dinero?
-- **Importe vs media histórica** — `importe_transaccion / importe_medio_mensual` — ¿es una transacción inusualmente grande para ese cliente?
-- **Velocidad** — combinar `numero_transacciones_ultima_hora` y `tiempo_desde_ultima_transaccion` para detectar ráfagas de actividad
+Lo que queda de EDA puro lo cerrará Juan Antonio cuando vuelva:
 
-### 3.3 Organización del notebook
+- [ ] **Celda de conclusiones finales** — resumen de variables relevantes, patrones detectados, caveats del dataset sintético y recomendaciones para el modelo
+- [ ] **Lista definitiva de features para el modelo** — qué incluir, qué descartar y qué derivar
 
-- [ ] **Añadir celdas Markdown de título/sección** — El notebook no tiene estructura visual. Necesita secciones tipo: `## 1. Carga y limpieza`, `## 2. Análisis univariante`, `## 3. Análisis bivariante`, `## 4. Correlaciones`, `## 5. Interacciones`, `## 6. Conclusiones y features seleccionadas`
-- [ ] **Corregir encoding** — En alguna celda aparece "CategÃ³ricas" en vez de "Categóricas". Hay un problema de encoding UTF-8 en una o dos celdas que hay que arreglar.
-- [ ] **Eliminar o consolidar redundancias** — Hay variables creadas con `.copy()` en varios sitios (`df_plot`, `df_inter`, `tabla_resumen`...) que deberían unificarse o limpiarse para no confundir al lector.
+Estas dos celdas las escribe Juan Antonio porque requieren criterio de diseño de modelo. **No tocar.**
 
-### 3.4 Interpretación y conclusiones
+### 3.4 Coordinación con el equipo (para más adelante)
 
-- [ ] **Añadir texto interpretativo bajo cada gráfico/bloque** — Actualmente el notebook es solo código + outputs sin explicar qué significa lo que se ve. Cada sección debería tener una celda Markdown de 2-4 líneas con el hallazgo clave.
-- [ ] **Celda de conclusiones finales del EDA** — Necesita un bloque resumen al final con: (1) variables más relevantes identificadas, (2) patrones de fraude detectados, (3) advertencias/caveats sobre el dataset sintético, (4) recomendaciones para el modelo.
-- [ ] **Lista de features recomendadas para el modelo** — Resultado accionable del EDA: qué variables incluir, cuáles descartar (IDs, fechas crudas, geolocalización en texto), y cuáles derivar.
-
-### 3.5 Coordinación con el equipo
-
-Esto no es para esta sesión, pero conviene tenerlo en mente mientras se cierra el EDA:
-
-- **Acordar con Full Stack el formato de salida del modelo** — El modelo debe exponer sus predicciones (probabilidad de fraude + etiqueta) en un formato que Full Stack pueda consumir. Definir esquema JSON/API. Lo haremos cuando el EDA esté cerrado y sepamos qué variables usa el modelo.
-- **Acordar con Red Team (Ciberseguridad) qué variables atacarán en Ronda 2** — Saber qué features va a manipular el Red Team ayuda a no depender solo de ellas en el modelo. También lo abordaremos en el siguiente bloque.
+- **Acordar con Full Stack el formato de salida del modelo** — esquema JSON/API para las predicciones. Se hará cuando el EDA esté cerrado.
+- **Acordar con Red Team qué variables atacarán en Ronda 2** — para no depender de features atacables. También en el siguiente bloque.
 
 ---
 
-## 4. Variables destacadas — resumen provisional para cerrar el EDA
-
-Esta tabla es el resultado que debe quedar documentado al final del EDA — una referencia clara para cuando arranquemos con el feature engineering y el modelado. No hay que implementar nada ahora, solo asegurarse de que el análisis que ya está hecho la justifica y de completar lo que falta para poder rellenar los huecos.
-
-Basado en lo analizado hasta ahora, las señales más prometedoras son:
+## 4. Variables destacadas — resumen para el modelado
 
 **Fuertes:**
-- `destino_alto_riesgo` (correlación 0.19, Cramér's V 0.19 — la más clara)
-- `estado_tarjeta` (Cramér's V 0.23 — significativo)
-- `cuenta_destino` (Cramér's V 0.29 — ojo con cardinalidad alta, 500 valores únicos)
-- `dispositivo_reconocido` (correlación -0.09, Cramér's V 0.09)
-- `importe_transaccion` (correlación 0.08 — señal débil pero combinada con otros mejora)
+- `destino_alto_riesgo` — fraud rate 33.6% vs 12.8%. La señal más limpia del dataset.
+- `estado_tarjeta` — tarjetas robadas/extraviadas/bloqueadas: 36-41% de fraude vs 12% en activas.
+- `cuenta_destino` (Cramér's V 0.29 — ojo con cardinalidad alta, ~500 valores únicos)
+- `dispositivo_reconocido` — no reconocido: 22.7% fraude vs 13.9% reconocido.
+- `cross_border` (feature derivada) — país de operación ≠ país del cliente: 26.7% vs 14.0%.
 
 **Moderadas:**
-- `tipo_transaccion`
-- `metodo_autenticacion`
-- `numero_fraudes_ultimo_ano`
-- `numero_transacciones_ultima_hora`
-- `veces_superar_limite_7_dias`
+- `importe_transaccion` — top quintil al 21.9%. Señal débil sola, fuerte en combinación.
+- `tipo_transaccion` — transferencias: 19.3% vs tarjeta: 13.6%.
+- `metodo_autenticacion` — firma/contactless levemente peor que 3DS.
+- `numero_transacciones_ultima_hora` y `veces_superar_limite_7_dias` — crecientes con el fraude.
+- `numero_fraudes_ultimo_ano` — útil en rango 0-3; **usar con cap en 3** (ver sección 5.2).
 
-**A descartar o tratar con cuidado:**
-- `cuenta_origen` — Cramér's V muy alto pero p-value no significativo; investigar antes de usar
-- IDs (`id_cliente`, `id_cuenta`, `id_tarjeta`, `id_transaccion`) — no usar como features
-- `direccion_ip_origen`, `geolocalizacion` — texto libre, requieren parsing si se quieren usar
-- `fecha`, `fecha_hora`, `fecha_creacion_tarjeta` — usar solo features derivadas (hora, dia_semana, etc.)
+**Descartar:**
+- `cuenta_origen` — descartada. Falsa señal de alta cardinalidad. Ver sección 5.1.
+- IDs (`id_cliente`, `id_cuenta`, `id_tarjeta`, `id_transaccion`) — nunca como features.
+- `direccion_ip_origen`, `geolocalizacion` — texto libre sin parsear, no usar directamente.
+- `fecha`, `fecha_hora`, `fecha_creacion_tarjeta` — usar solo derivadas (hora, dia_semana, etc.).
+
+**Features derivadas recomendadas para el FE:**
+- `flag_cross_border` — `operacion_pais != customer_country`
+- `ratio_importe_saldo` — `importe_transaccion / saldo_actual`
+- `ratio_volumen_saliente_entrante` — `volumen_saliente_30_dias / volumen_entrante_30_dias`
+- `ratio_importe_media` — `importe_transaccion / importe_medio_mensual`
+- `fraudes_prev_capped` — `min(numero_fraudes_ultimo_ano, 3)`
+
+---
+
+## 5. Anomalías del dataset — análisis y decisiones tomadas
+
+> Esta sección documenta dos anomalías detectadas en el dataset sintético, su diagnóstico completo y la decisión sobre cómo tratarlas. **El siguiente paso concreto es implementar estas dos correcciones** — están al 100% resueltas en análisis, solo falta escribir el código. Se implementarán en el notebook de feature engineering, no en el EDA.
+
+### 5.1 `cuenta_origen` — falsa señal de alta cardinalidad
+
+**Qué se detectó:** Cramér's V = 0.61 con `IS_FRAUD`, pero p-value = 0.056 (no significativo). Había 143 cuentas con fraud rate del 100%.
+
+**Diagnóstico:** Tras investigación, no hay señal real. Las 143 cuentas "100% fraude" son casi todas cuentas con 1-2 transacciones — con tan pocas observaciones, es estadísticamente trivial tener fraud rate del 100% o 0%. El Cramér's V alto es un artefacto de tener ~3.548 categorías únicas con muy pocas observaciones por categoría; eso infla artificialmente el estadístico. Prueba definitiva: el AUC del modelo **no cambia** al incluir o excluir `cuenta_origen` (0.706 sin ella, 0.705 con ella).
+
+**Decisión:** `cuenta_origen` se **descarta** como feature. No hay que hacer nada especial en el código — simplemente no incluirla en la lista de features del modelo. La nota de "investigar antes de usar" que aparecía en versiones anteriores de este documento queda cerrada.
+
+---
+
+### 5.2 `numero_fraudes_ultimo_ano` — rotura aparente en valores altos
+
+**Qué se detectó:** La fraud rate sube de forma lógica de 0 a 3 fraudes previos (14.4% → 16.1% → 19.4% → 23.4%), pero luego cae de forma extraña: 4 fraudes → 11.1%, 5 fraudes → 10.0%, 6 fraudes → 0.0%. Parecía un error del generador sintético.
+
+**Diagnóstico:** Es ruido estadístico puro de muestra pequeña. Los intervalos de confianza al 95% lo confirman:
+
+| Valor | n | Fraud rate | IC 95% |
+|---|---|---|---|
+| 0 | 6.791 | 14.4% | [13.6%, 15.2%] |
+| 1 | 2.240 | 16.1% | [14.7%, 17.7%] |
+| 2 | 685 | 19.4% | [16.6%, 22.5%] |
+| 3 | 201 | 23.4% | [18.1%, 29.7%] |
+| 4 | 72 | 11.1% | [5.7%, **20.4%**] ← incluye la tasa base |
+| 5 | 10 | 10.0% | [1.8%, **40.4%**] ← casi sin valor |
+| 6 | 1 | 0.0% | [0.0%, **79.3%**] ← irrelevante |
+
+El 99.2% de los datos están en valores 0-3 (9.917 de 10.000). El aparente descenso en 4-6 no es real — los intervalos de confianza de esos valores incluyen perfectamente la tasa base del 15.26%. No hay que regenerar el dataset.
+
+**Decisión:** Usar la variable con un **cap en 3**. En el notebook de feature engineering, añadir:
+
+```python
+df['fraudes_prev_capped'] = df['numero_fraudes_ultimo_ano'].clip(upper=3)
+```
+
+Esta nueva columna captura la tendencia real y creciente (0→1→2→3), sin que el modelo intente aprender de 83 registros con alta varianza. La columna original `numero_fraudes_ultimo_ano` se puede mantener pero no usar directamente como feature.
+
+---
+
+## 6. Próximo paso — lo que hay que hacer ahora
+
+> Esto es lo que le queda al compañero que retome el trabajo. Está todo decidido — solo hay que ejecutarlo.
+
+**Tarea única: implementar las dos correcciones en el notebook de feature engineering.**
+
+El EDA está cerrado. El siguiente notebook es el de **feature engineering**, que aún no existe. Hay que crearlo (`FE.ipynb` o `feature_engineering.ipynb`) y que arranque con estas dos líneas antes de cualquier otra transformación:
+
+```python
+# 1. Eliminar cuenta_origen del conjunto de features (no usar en el modelo)
+# No hace falta dropearla del dataframe, simplemente no incluirla en la lista de features.
+# Documenta la decisión en una celda Markdown.
+
+# 2. Capear numero_fraudes_ultimo_ano en 3
+df['fraudes_prev_capped'] = df['numero_fraudes_ultimo_ano'].clip(upper=3)
+```
+
+Después de estas dos correcciones, el notebook de FE puede continuar con el resto de features derivadas listadas en la sección 4 (cross-border, ratios de importe/saldo, etc.). Eso ya lo haremos con Juan Antonio cuando vuelva — es donde empieza el criterio de diseño del modelo.
