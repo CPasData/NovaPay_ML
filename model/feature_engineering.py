@@ -11,11 +11,11 @@ ID_COLS = [
     'fecha_creacion_tarjeta', 'fecha_hora',
 ]
 
-DROP_COLS = ID_COLS + ['numero_fraudes_ultimo_ano']
+DROP_COLS = ID_COLS + ['estado_cuenta', 'estado_tarjeta']
 
 CAT_COLS = [
     'tipo_cliente', 'customer_country', 'customer_region',
-    'estado_cuenta', 'estado_tarjeta', 'tipo_transaccion',
+    'tipo_transaccion',
     'metodo_autenticacion', 'operacion_pais', 'operacion_region',
 ]
 
@@ -88,6 +88,10 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         for col in DROP_COLS:
             if col in X.columns:
                 X.drop(columns=[col], inplace=True)
+
+        if 'numero_fraudes_ultimo_ano' in X.columns:
+            X['fraudes_prev_capped'] = X['numero_fraudes_ultimo_ano'].clip(upper=3)
+            X.drop(columns=['numero_fraudes_ultimo_ano'], inplace=True)
 
         X['txn_vs_limit_pct'] = X['importe_transaccion'] / X['limite_importe_transacciones'].replace(0, 1)
         X['txn_vs_balance_pct'] = _safe_ratio(X['importe_transaccion'], X['saldo_actual'])
