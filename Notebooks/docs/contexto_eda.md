@@ -4,7 +4,7 @@
 > Autor del análisis: Juan Antonio (Data Science — Blue Team, Grupo 2).
 > Este documento está pensado para que un compañero pueda retomar el trabajo sin perder contexto.
 
-> **Estado actual:** el EDA está prácticamente cerrado. El notebook ordenado (`EDA_ordenado.ipynb`) tiene estructura completa, análisis hecho e interpretaciones escritas. **El único paso que queda antes de pasar al modelado** es tratar dos anomalías del dataset que ya están diagnosticadas — están explicadas en detalle en la sección 5 de este documento. Es trabajo concreto y acotado, no hay que tomar decisiones de diseño: está todo decidido, solo hay que implementarlo.
+> **Estado actual:** el EDA está **completamente cerrado**. El notebook `EDA_ordenado.ipynb` tiene el análisis completo, las interpretaciones, las conclusiones y las recomendaciones de feature engineering y modelado (secciones 9 y 10). **El siguiente paso es crear el notebook de feature engineering** — lo que hay que hacer está detallado en la sección 6.
 
 ---
 
@@ -21,7 +21,11 @@ No hay ningún valor nulo en ninguna columna — el dataset sintético está com
 
 `IS_FRAUD` — binaria (0 / 1)
 - Tasa de fraude global: **15,26%** (~1.526 transacciones fraudulentas de 10.000)
-- El dataset está **desbalanceado** (~6,5:1 legítimas/fraudulentas)
+- El dataset está **desbalanceado** (~5,6:1 legítimas/fraudulentas)
+
+### Cobertura temporal
+
+El dataset cubre solo **enero–mayo y noviembre–diciembre**. Los meses junio–octubre no existen. No hay estacionalidad relevante entre los meses presentes (fraud rate estable entre 12–16%).
 
 ### Estructura de columnas por bloque temático
 
@@ -58,7 +62,7 @@ No hay ningún valor nulo en ninguna columna — el dataset sintético está com
 
 - **Fraud rate por hora:** bastante plano (~14-16% la mayoría de horas), con dos picos claros en **hora 2** y **hora 12** (~20%). El patrón nocturno esperado NO es tan pronunciado.
 - **Fraud rate por día de la semana:** muy homogéneo (≈14-16%), sin un día claramente peor.
-- **Fraud rate por mes:** ligeramente más bajo en noviembre (~12%) y en febrero/abril (~15%), pero sin patrón fuerte.
+- **Fraud rate por mes:** estable entre 12–16% en los meses presentes. Sin estacionalidad relevante.
 - **Distribución fraude/no-fraude** en barras para: `tipo_cliente`, `customer_country`, `customer_region`, `estado_cuenta`, `estado_tarjeta`, `tipo_transaccion`, `metodo_autenticacion`, `operacion_pais`, `operacion_region`, `dia_semana`, `hora`, `mes`
 - **Heatmap hora × día de la semana:** fraud rate sin patrón claro
 - **Heatmap hora × importe_transaccion (tramos):** a mayor importe, más fraude — especialmente en transacciones grandes fuera de horario nocturno
@@ -100,18 +104,14 @@ Resultados ordenados por valor absoluto:
 
 | Variable | Cramér's V | p-value | Significativa |
 |---|---|---|---|
-| `cuenta_origen` | **0.607** | 0.056 | ⚠️ NO (casi) |
+| `cuenta_origen` | **0.607** | 0.056 | ⚠️ Artefacto — ver sección 5.1 |
 | `cuenta_destino` | **0.290** | ~0 | ✅ |
-| `estado_tarjeta` | **0.226** | ~0 | ✅ |
+| `estado_tarjeta` | **0.226** | ~0 | ⚠️ Leakage — ver sección 5 |
 | `destino_alto_riesgo` (riesgo_label) | 0.187 | ~0 | ✅ |
 | `dispositivo_reconocido` (dispositivo_label) | 0.087 | ~0 | ✅ |
 | `tipo_transaccion` | 0.072 | ~0 | ✅ |
 | `metodo_autenticacion` | 0.032 | 0.036 | ✅ (débil) |
 | resto (día semana, país, región...) | < 0.05 | > 0.05 | ❌ |
-
-> ⚠️ **Nota importante sobre `cuenta_origen`:** El Cramér's V altísimo (0.61) pero p-value no significativo (0.056) sugiere que hay muy pocas cuentas que concentran casi todo el fraude. Esto puede ser un artefacto del dataset sintético (cuentas "spammer") o una señal real muy útil. **Requiere investigación antes de usar como feature.**
-
-- Barplot de Cramér's V por variable
 
 ### 2.7 Análisis de interacciones entre variables (heatmaps + tablas)
 
@@ -128,77 +128,93 @@ Se analizaron las siguientes combinaciones:
 9. `is_night` × `destino_alto_riesgo`
 10. `tipo_transaccion` × `importe_tramo`
 
+### 2.8 Revisión de variables adicionales (sección 8 del notebook)
+
+Análisis individual de las variables no cubiertas en los bloques anteriores:
+
+| Variable | Resultado |
+|---|---|
+| `estado_tarjeta`, `estado_cuenta` | Riesgo de leakage causal — **fuera del train** |
+| `is_night`, `is_weekend` | Sin señal (diferencia < 1.5pp con la base) — **fuera** |
+| `tipo_transaccion` | Transferencia 19.3% vs tarjeta 13.6% — **dentro** |
+| `metodo_autenticacion` | Señal débil pero coherente — **candidata opcional** |
+| `numero_transacciones_ultima_hora` | Correlación ≈ 0 — **fuera** |
+| `saldo_actual` vs `saldo_medio_30_dias` | Correlación 0.98 entre sí — **se queda `saldo_actual`, fuera `saldo_medio_30_dias`** |
+| `limite_importe_transacciones` | 5 valores, fraud rate plano al 15% — **fuera** |
+
 ---
 
-## 3. Lo que ya está hecho
+## 3. Estado del notebook
 
-### 3.1 Análisis completado ✅
+### 3.1 Completado ✅
 
+- ✅ Análisis univariante, bivariante, correlaciones e interacciones
 - ✅ Outliers en variables numéricas (boxplots + tabla IQR + escala logarítmica)
-- ✅ Distribuciones de saldo, volumen, antigüedad, tiempo desde última transacción (fraude vs no fraude)
-- ✅ Visualización del desbalanceo de clases con reflexión sobre impacto en el modelado
-- ✅ Investigación de `cuenta_origen` — resuelta, ver sección 5
-- ✅ Análisis cross-border: 10% de operaciones en país diferente al cliente → fraud rate 26.7% vs 14.0%
+- ✅ Distribuciones de saldo, volumen, antigüedad, tiempo desde última transacción
+- ✅ Visualización del desbalanceo de clases
+- ✅ Investigación de `cuenta_origen` — resuelta, ver sección 5.1
+- ✅ Análisis cross-border: 10% de operaciones en país diferente al cliente → 26.7% vs 14.0%
 - ✅ Análisis de `tenure` y `antiguedad_tarjeta_dias`
-- ✅ Análisis de `tiempo_desde_ultima_transaccion` (confirmado en segundos, max ~174 días)
-- ✅ Análisis de `numero_fraudes_ultimo_ano` — resuelta, ver sección 5
+- ✅ Análisis de `numero_fraudes_ultimo_ano` — resuelta, ver sección 5.2
+- ✅ Revisión de variables adicionales (sección 8)
+- ✅ 16 celdas interpretativas (hallazgos por bloque de análisis)
+- ✅ **Sección 9 — Conclusiones del EDA** (variables descartadas, señal confirmada, anomalías, baseline AUC)
+- ✅ **Sección 10 — Recomendaciones de Feature Engineering y Modelado**
 
-### 3.2 Organización del notebook ✅
+### 3.2 Coordinación con el equipo (para más adelante)
 
-- ✅ `EDA_ordenado.ipynb` creado con secciones Markdown, comentarios de código e interpretaciones
-- ✅ Estructura: Setup → Carga → Univariante → Bivariante → Correlaciones → Interacciones
-- ✅ 16 celdas interpretativas añadidas (una por bloque de análisis)
-
-### 3.3 Pendiente — conclusiones finales
-
-Lo que queda de EDA puro lo cerrará Juan Antonio cuando vuelva:
-
-- [ ] **Celda de conclusiones finales** — resumen de variables relevantes, patrones detectados, caveats del dataset sintético y recomendaciones para el modelo
-- [ ] **Lista definitiva de features para el modelo** — qué incluir, qué descartar y qué derivar
-
-Estas dos celdas las escribe Juan Antonio porque requieren criterio de diseño de modelo. **No tocar.**
-
-### 3.4 Coordinación con el equipo (para más adelante)
-
-- **Acordar con Full Stack el formato de salida del modelo** — esquema JSON/API para las predicciones. Se hará cuando el EDA esté cerrado.
-- **Acordar con Red Team qué variables atacarán en Ronda 2** — para no depender de features atacables. También en el siguiente bloque.
+- **Acordar con Full Stack el formato de salida del modelo** — esquema JSON/API para las predicciones. Se hará cuando el primer modelo esté entrenado.
+- **Acordar con Red Team qué variables atacarán en Ronda 2** — preparar un documento de una página con el feature set usado, no el EDA completo.
 
 ---
 
-## 4. Variables destacadas — resumen para el modelado
+## 4. Decisiones sobre variables — resumen
 
-**Fuertes:**
-- `destino_alto_riesgo` — fraud rate 33.6% vs 12.8%. La señal más limpia del dataset.
-- `estado_tarjeta` — tarjetas robadas/extraviadas/bloqueadas: 36-41% de fraude vs 12% en activas.
-- `cuenta_destino` (Cramér's V 0.29 — ojo con cardinalidad alta, ~500 valores únicos)
-- `dispositivo_reconocido` — no reconocido: 22.7% fraude vs 13.9% reconocido.
-- `cross_border` (feature derivada) — país de operación ≠ país del cliente: 26.7% vs 14.0%.
+### Dentro del feature set
 
-**Moderadas:**
-- `importe_transaccion` — top quintil al 21.9%. Señal débil sola, fuerte en combinación.
-- `tipo_transaccion` — transferencias: 19.3% vs tarjeta: 13.6%.
-- `metodo_autenticacion` — firma/contactless levemente peor que 3DS.
-- `numero_transacciones_ultima_hora` y `veces_superar_limite_7_dias` — crecientes con el fraude.
-- `numero_fraudes_ultimo_ano` — útil en rango 0-3; **usar con cap en 3** (ver sección 5.2).
+| Variable | Señal |
+|---|---|
+| `destino_alto_riesgo` | 33.6% vs 12.8% — señal más limpia del dataset |
+| `dispositivo_reconocido` | No reconocido: 22.7% vs reconocido: 13.9% |
+| `tipo_transaccion` | Transferencia: 19.3% vs tarjeta: 13.6% |
+| `importe_transaccion` | Quintil superior: 21.9%. Fuerte en combinación |
+| `fraudes_prev_capped` | Derivada de `numero_fraudes_ultimo_ano` con cap en 3 |
+| `cross_border` (derivada) | Operación fuera del país del cliente: 26.7% vs 14.0% |
+| `saldo_actual` | Contexto de la transacción, relevante para ratios |
+| `importe_medio_mensual` | Correlación débil (0.033) pero útil para ratios |
+| `metodo_autenticacion` | Candidata opcional — señal débil pero coherente |
+| `numero_pin_disponibles` | Valor 0 → 23.5% fraud rate — a confirmar en FE |
+| Variables de volumen y transferencias | Señal individual débil, pueden aportar en combinación |
 
-**Descartar:**
-- `cuenta_origen` — descartada. Falsa señal de alta cardinalidad. Ver sección 5.1.
-- IDs (`id_cliente`, `id_cuenta`, `id_tarjeta`, `id_transaccion`) — nunca como features.
-- `direccion_ip_origen`, `geolocalizacion` — texto libre sin parsear, no usar directamente.
-- `fecha`, `fecha_hora`, `fecha_creacion_tarjeta` — usar solo derivadas (hora, dia_semana, etc.).
+### Fuera del feature set
 
-**Features derivadas recomendadas para el FE:**
-- `flag_cross_border` — `operacion_pais != customer_country`
-- `ratio_importe_saldo` — `importe_transaccion / saldo_actual`
-- `ratio_volumen_saliente_entrante` — `volumen_saliente_30_dias / volumen_entrante_30_dias`
-- `ratio_importe_media` — `importe_transaccion / importe_medio_mensual`
-- `fraudes_prev_capped` — `min(numero_fraudes_ultimo_ano, 3)`
+| Variable | Motivo |
+|---|---|
+| `id_cliente`, `id_cuenta`, `id_tarjeta`, `id_transaccion` | Identificadores |
+| `IMPACTO_FRAUDE` | **Leakage total** — correlación 0.89 con IS_FRAUD, siempre 0 en no-fraudes |
+| `cuenta_origen` | Artefacto de alta cardinalidad — sin señal real (AUC idéntico con/sin ella) |
+| `estado_tarjeta`, `estado_cuenta` | **Riesgo de leakage causal** en dataset sintético |
+| `saldo_medio_30_dias` | Redundante con `saldo_actual` (correlación 0.98) |
+| `is_night`, `is_weekend` | Sin señal |
+| `numero_transacciones_ultima_hora` | Sin señal |
+| `veces_superar_limite_7_dias` | Sin señal |
+| `limite_importe_transacciones` | Sin señal |
+| `identificador_dispositivo_fingerprint`, `direccion_ip_origen`, `geolocalizacion`, `cuenta_destino` | Identificadores o requieren ingeniería compleja fuera del alcance de Ronda 1 |
+| `fecha_hora`, `fecha_creacion_tarjeta` | Fechas en bruto — usar solo derivadas |
+| `numero_fraudes_ultimo_ano` | Sustituida por `fraudes_prev_capped` |
+
+### Features derivadas a construir en FE
+
+```python
+df['fraudes_prev_capped'] = df['numero_fraudes_ultimo_ano'].clip(upper=3)
+df['cross_border'] = (df['operacion_pais'] != df['customer_country']).astype(int)
+df['ratio_importe_saldo'] = df['importe_transaccion'] / (df['saldo_actual'] + 1)
+df['ratio_importe_media'] = df['importe_transaccion'] / (df['importe_medio_mensual'] + 1)
+```
 
 ---
 
 ## 5. Anomalías del dataset — análisis y decisiones tomadas
-
-> Esta sección documenta dos anomalías detectadas en el dataset sintético, su diagnóstico completo y la decisión sobre cómo tratarlas. **El siguiente paso concreto es implementar estas dos correcciones** — están al 100% resueltas en análisis, solo falta escribir el código. Se implementarán en el notebook de feature engineering, no en el EDA.
 
 ### 5.1 `cuenta_origen` — falsa señal de alta cardinalidad
 
@@ -206,7 +222,7 @@ Estas dos celdas las escribe Juan Antonio porque requieren criterio de diseño d
 
 **Diagnóstico:** Tras investigación, no hay señal real. Las 143 cuentas "100% fraude" son casi todas cuentas con 1-2 transacciones — con tan pocas observaciones, es estadísticamente trivial tener fraud rate del 100% o 0%. El Cramér's V alto es un artefacto de tener ~3.548 categorías únicas con muy pocas observaciones por categoría; eso infla artificialmente el estadístico. Prueba definitiva: el AUC del modelo **no cambia** al incluir o excluir `cuenta_origen` (0.706 sin ella, 0.705 con ella).
 
-**Decisión:** `cuenta_origen` se **descarta** como feature. No hay que hacer nada especial en el código — simplemente no incluirla en la lista de features del modelo. La nota de "investigar antes de usar" que aparecía en versiones anteriores de este documento queda cerrada.
+**Decisión:** `cuenta_origen` se **descarta** como feature. No hay que hacer nada especial en el código — simplemente no incluirla en la lista de features del modelo.
 
 ---
 
@@ -228,31 +244,47 @@ Estas dos celdas las escribe Juan Antonio porque requieren criterio de diseño d
 
 El 99.2% de los datos están en valores 0-3 (9.917 de 10.000). El aparente descenso en 4-6 no es real — los intervalos de confianza de esos valores incluyen perfectamente la tasa base del 15.26%. No hay que regenerar el dataset.
 
-**Decisión:** Usar la variable con un **cap en 3**. En el notebook de feature engineering, añadir:
+**Decisión:** Usar la variable con un **cap en 3**:
 
 ```python
 df['fraudes_prev_capped'] = df['numero_fraudes_ultimo_ano'].clip(upper=3)
 ```
 
-Esta nueva columna captura la tendencia real y creciente (0→1→2→3), sin que el modelo intente aprender de 83 registros con alta varianza. La columna original `numero_fraudes_ultimo_ano` se puede mantener pero no usar directamente como feature.
+Esta nueva columna captura la tendencia real y creciente (0→1→2→3), sin que el modelo intente aprender de 83 registros con alta varianza.
 
 ---
 
-## 6. Próximo paso — lo que hay que hacer ahora
+## 6. Próximo paso — Feature Engineering
 
-> Esto es lo que le queda al compañero que retome el trabajo. Está todo decidido — solo hay que ejecutarlo.
+El EDA está cerrado. El siguiente notebook es `FE.ipynb` (feature engineering). No existe aún — hay que crearlo.
 
-**Tarea única: implementar las dos correcciones en el notebook de feature engineering.**
-
-El EDA está cerrado. El siguiente notebook es el de **feature engineering**, que aún no existe. Hay que crearlo (`FE.ipynb` o `feature_engineering.ipynb`) y que arranque con estas dos líneas antes de cualquier otra transformación:
+### Lo que hay que implementar (decidido, solo ejecutar)
 
 ```python
-# 1. Eliminar cuenta_origen del conjunto de features (no usar en el modelo)
-# No hace falta dropearla del dataframe, simplemente no incluirla en la lista de features.
-# Documenta la decisión en una celda Markdown.
+# 1. No incluir cuenta_origen en el feature set (no hace falta dropearla)
+# Documentar la decisión en una celda Markdown.
 
-# 2. Capear numero_fraudes_ultimo_ano en 3
+# 2. Cap en numero_fraudes_ultimo_ano
 df['fraudes_prev_capped'] = df['numero_fraudes_ultimo_ano'].clip(upper=3)
+
+# 3. Flag cross-border
+df['cross_border'] = (df['operacion_pais'] != df['customer_country']).astype(int)
+
+# 4. Ratios de importe
+df['ratio_importe_saldo'] = df['importe_transaccion'] / (df['saldo_actual'] + 1)
+df['ratio_importe_media'] = df['importe_transaccion'] / (df['importe_medio_mensual'] + 1)
 ```
 
-Después de estas dos correcciones, el notebook de FE puede continuar con el resto de features derivadas listadas en la sección 4 (cross-border, ratios de importe/saldo, etc.). Eso ya lo haremos con Juan Antonio cuando vuelva — es donde empieza el criterio de diseño del modelo.
+### Lo que hay que decidir en equipo
+
+- **Selección final de features**: cuáles de las variables de señal débil entran (volumen, transferencias 7 días, `metodo_autenticacion`, `numero_pin_disponibles`). Requiere criterio sobre el trade-off complejidad/ganancia.
+- **Estrategia de encoding**: One-Hot para categoriales de pocas clases; Target Encoding con smoothing para `customer_country` u `operacion_pais` si se usan.
+- **Umbral de decisión del modelo**: ajustar según el trade-off precisión/recall que defina negocio.
+
+### Recomendaciones de modelado (ver sección 10 del notebook para detalle)
+
+- **Métricas**: AUC-ROC principal, F1 secundario. No usar accuracy.
+- **Desbalanceo**: `class_weight='balanced'` o SMOTE.
+- **Baseline**: Random Forest (AUC 0.706 ya conseguido sin FE).
+- **Candidato principal**: XGBoost o LightGBM.
+- **Validación**: 5-fold cross-validation estratificada.
