@@ -25,15 +25,15 @@ usando datos sintéticos generados con Faker. El proyecto incluye:
 
 ```
 C:\Dev\NovaPay_ML\
-├── model/                          # Código principal y modelos
-│   ├── feature_engineering.py      # Transformer v3 (67 features)
+├── scripts/                         # Código principal
 │   ├── feature_engineering.py       # FE v3 (67 features, session/red/temporales)
 │   ├── regenerate_models.py         # Regenera ambos .pkl con pipeline completo
 │   ├── inference_example.py         # Ejemplo de inferencia con modelo guardado
 │   ├── save_models.py               # Legacy (reemplazado por regenerate_models.py)
+│   ├── __init__.py
 │   ├── saved_models/
 │   │   ├── modelo_07_v1.pkl         # Pipeline FE v3 + Scaler + Imputer + LGB + XGB + w + thr
-│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2
+│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2 (mejorado)
 │   └── synthetic_data/
 │       ├── generar_dataset_fraude.py          # Generador v1 (señal débil)
 │       ├── generar_dataset_fraude_mejorado.py # Generador v2 (señal fuerte)
@@ -45,18 +45,24 @@ C:\Dev\NovaPay_ML\
 │   ├── 08_train_fraud_v2.ipynb      # Entrenamiento v2 (LGB + XGB)
 │   ├── 09_pipeline_completo.ipynb   # Pipeline completo FE v3 + Ensemble + F2 thr
 │   ├── 09_pipeline_completo_v1.ipynb # Pipeline completo sobre v1
-│   └── EDA.ipynb                    # Análisis exploratorio inicial
+│   ├── EDA.ipynb                    # Análisis exploratorio inicial
+│   ├── EDA_v2.ipynb                 # Análisis exploratorio ronda 2
+│   └── docs/
+│       └── contexto_eda.md          # Documentación del EDA
 │
 ├── data/
 │   ├── dataset_fraude.csv           # v1 (10K txns, ~15% fraude)
 │   └── dataset_fraude_mejorado.csv  # v2 (10K txns, ~15% fraude, señal mejorada)
 │
-└── docs/
-    ├── contexto_ml.md               # ← ESTE DOCUMENTO
-    ├── mejora_senal_fraude.md       # Documentación de mejora de señal
-    ├── esquema_bd.sql               # Esquema de base de datos
-    ├── 03_feature_engineering_deep_dive.ipynb  # Análisis v3 (sesión/red/temporales)
-    └── 06_model_selection_deep_dive.ipynb      # Comparación de modelos + ensemble
+├── docs/
+│   ├── contexto_ml.md               # ← ESTE DOCUMENTO
+│   ├── mejora_senal_fraude.md       # Documentación de mejora de señal
+│   ├── esquema_bd.sql               # Esquema de base de datos
+│   ├── 03_feature_engineering_deep_dive.ipynb  # Análisis v3 (sesión/red/temporales)
+│   └── 06_model_selection_deep_dive.ipynb      # Comparación de modelos + ensemble
+│
+├── app.py                           # API FastAPI para inferencia
+└── README.md
 ```
 
 ---
@@ -220,22 +226,21 @@ Clase `FeatureEngineer` (hereda de `BaseEstimator, TransformerMixin`). Versión 
 ```powershell
 cd C:\Dev\NovaPay_ML
 # Para v2 (mejorado)
-jupyter nbconvert --execute --to notebook model\09_pipeline_completo.ipynb
+jupyter nbconvert --execute --to notebook notebooks\09_pipeline_completo.ipynb
 # Para v1, cambiar DATASET = 'v1' en la celda de configuración
 ```
 
-### 5.2 `07_train_fraud_rigorous.ipynb` — Notebook riguroso (legado, v1)
+### 5.2 `07_train_fraud_v1.ipynb` — Entrenamiento v1 (legado)
 
-Idéntico en estructura a `09` pero sin KNNImputer, sin ensemble, sin FE v3. Reemplazado por `09`.
+Entrenamiento con FE v3, LightGBM + XGBoost sin ensemble/KNNImputer/F2. Reemplazado por `09_pipeline_completo.ipynb`.
 
-### 5.3 `08_train_fraud_mejorado.ipynb` — Notebook mejorado (legado, v2)
+### 5.3 `08_train_fraud_v2.ipynb` — Entrenamiento v2 (legado)
 
 Misma estructura que `07` pero con datos v2. Reemplazado por `09`.
 
 ### 5.4 Notebooks legacy (01–06)
 
-`01`–`06` son notebooks originales con 8 modelos, GridSearchCV completo. No se actualizaron a v3.
-Ejecutan sin errores en sklearn 1.8 pero usan FE v1/v2.
+`01`–`06` eran notebooks originales con 8 modelos y GridSearchCV completo. Ya no están en el repositorio (reemplazados por los notebooks en `notebooks/` y los deep-dives en `docs/`).
 
 ---
 
@@ -296,15 +301,13 @@ y_prob = obj['best_w'] * p_lgb + (1 - obj['best_w']) * p_xgb
 y_pred = (y_prob >= obj['best_t']).astype(int)
 ```
 
-Ver `model/inference_example.py` para ejemplo completo.
+Ver `scripts/inference_example.py` para ejemplo completo.
 
-### 6.4 Regeneración
-
-Ejecutar desde `model/`:
+Ejecutar desde `scripts/`:
 
 ```powershell
-cd C:\Dev\NovaPay_ML\model
-python regenerate_models.py
+cd C:\Dev\NovaPay_ML
+python scripts\regenerate_models.py
 ```
 
 El script entrena ambos modelos (v1 y v2) con pipeline completo (FE v3 → KNNImputer → Scaler → LGB + XGB → ensemble → F2 thr) y los guarda.
@@ -362,15 +365,26 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 - Modelos `.pkl` regenerados con pipeline completo (FE v3 + Scaler + Imputer + Ensemble + Threshold)
 - `inference_example.py`: ejemplo funcional de inferencia
 - `regenerate_models.py`: script que regenera ambos modelos
-- Todos los notebooks actualizados con paths correctos (`Path.cwd()` en lugar de `Path.cwd().parent`)
+- `app.py`: API FastAPI para inferencia en producción
+- Todos los notebooks y scripts con paths correctos (`scripts/`, `notebooks/`, `data/`, `docs/`)
+- `IMPACTO_FRAUDE` eliminado de generadores — se calcula post-inferencia como regla de negocio
+- Generadores actualizados para guardar en `data/` automáticamente
+- Estructura final del proyecto consolidada (data/ scripts/ notebooks/ docs/)
 - `03_feature_engineering_deep_dive.ipynb` actualizado con sección v3
 - `06_model_selection_deep_dive.ipynb` actualizado con sección ensemble
 - Deep-dive notebooks ejecutándose sin errores
 
-### Pendiente / A decidir:
+### Pendiente / A decidir (próximas iteraciones):
+- Refinamiento continuo del modelo: hiperparámetros, nuevas features (v4), otros algoritmos
+- Mejora en la generación de datos sintéticos
+- Llevar a producción: API, monitoreo, métricas en vivo
 - CatBoost no instalado — notebooks lo manejan con try/except
 - Para producción real, el umbral F2 debe recalibrarse con datos reales
-- `modelo_07_v1.pkl` tiene PR-AUC 0.3236 — señalar que es un dataset con señal débil, no usar en producción
+- `modelo_07_v1.pkl` tiene PR-AUC 0.3236 — dataset con señal débil, no usar en producción
+
+### Roles:
+- **Colaborador (ML/DS)**: entrenamiento del modelo, feature engineering, generación de datos sintéticos
+- No hay dependencias externas bloqueantes para continuar
 
 ---
 
@@ -379,15 +393,22 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 ### Para entrenar (regenerar modelos):
 
 ```powershell
-cd C:\Dev\NovaPay_ML\model
-python regenerate_models.py
+cd C:\Dev\NovaPay_ML
+python scripts\regenerate_models.py
 ```
 
 ### Para inferencia en producción:
 
 ```powershell
 cd C:\Dev\NovaPay_ML
-python model\inference_example.py
+python scripts\inference_example.py
+```
+
+O vía API:
+
+```powershell
+cd C:\Dev\NovaPay_ML
+uvicorn app:app --reload
 ```
 
 ### Para explorar resultados:
@@ -395,11 +416,11 @@ python model\inference_example.py
 ```powershell
 cd C:\Dev\NovaPay_ML
 # Pipeline completo (interactivo)
-jupyter notebook model\09_pipeline_completo.ipynb
+jupyter notebook notebooks\09_pipeline_completo.ipynb
 # Feature engineering deep dive
-jupyter notebook model\03_feature_engineering_deep_dive.ipynb
+jupyter notebook docs\03_feature_engineering_deep_dive.ipynb
 # Model selection deep dive
-jupyter notebook model\06_model_selection_deep_dive.ipynb
+jupyter notebook docs\06_model_selection_deep_dive.ipynb
 ```
 
 ### Packages principales:
