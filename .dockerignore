@@ -1,0 +1,28 @@
+# Control de versiones
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Entornos virtuales
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker
+docker-compose.yml
+.dockerignore
+
+# Docs y extras
+README.md
+*.md
+
+# Notebooks
+*.ipynb
