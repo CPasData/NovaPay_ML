@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+ 
+  api:
+    build: .
+    ports:
+      - "8000:8000"                 # localhost:8000 → contenedor:8000
+    volumes:
+      - ./app.py:/app/app.py        # hot-reload: los cambios en app.py se reflejan al instante
+      - ./model:/app/model        
+    environment:
+      ENV: development    

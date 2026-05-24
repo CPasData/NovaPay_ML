@@ -13,9 +13,6 @@ np.random.seed(42)
 
 N = 10000
 
-# ============================================================
-# CONSTANTES Y CATEGORÍAS
-# ============================================================
 metodos_auth = ['PIN', 'firma', '3DS', 'huella', 'contactless']
 paises_regiones = {
     'ES': ['Norte', 'Sur', 'Este', 'Oeste', 'Centro'],
@@ -33,7 +30,7 @@ estados_tarjeta = ['activa', 'bloqueada', 'caducada', 'robada', 'extraviada']
 tipos_transaccion = ['tarjeta', 'transferencia']
 
 # ============================================================
-# NIVEL 1: CLIENTES
+# NIVEL 1: CLIENTES (same as v1)
 # ============================================================
 clientes = []
 for _ in range(2000):
@@ -52,7 +49,7 @@ for _ in range(2000):
     })
 
 # ============================================================
-# NIVEL 2: CUENTAS
+# NIVEL 2: CUENTAS (same as v1)
 # ============================================================
 cuentas = []
 for c in clientes:
@@ -72,7 +69,7 @@ for c in clientes:
         })
 
 # ============================================================
-# NIVEL 3: TARJETAS
+# NIVEL 3: TARJETAS (same as v1)
 # ============================================================
 tarjetas = []
 for cu in cuentas:
@@ -90,7 +87,7 @@ for cu in cuentas:
         })
 
 # ============================================================
-# NIVEL EXTRA: CUENTAS DESTINO (algunas marcadas como fraude)
+# CUENTAS DESTINO (same as v1)
 # ============================================================
 cuentas_destino = []
 for _ in range(500):
@@ -102,7 +99,7 @@ for _ in range(500):
     })
 
 # ============================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES (same as v1)
 # ============================================================
 def generar_geoloc(country):
     ciudades = {
@@ -123,11 +120,6 @@ def generar_ip(country):
     return f"{f}.{np.random.randint(0,256)}.{np.random.randint(0,256)}.{np.random.randint(1,255)}"
 
 def elegir_operacion_pais_region(home_country, home_region):
-    """
-    El 75% de las veces la operación es en el mismo país y región del cliente.
-    El 15% mismo país, región diferente.
-    El 10% país diferente.
-    """
     r = np.random.random()
     if r < 0.75:
         return home_country, home_region
@@ -141,82 +133,88 @@ def elegir_operacion_pais_region(home_country, home_region):
         region = np.random.choice(paises_regiones[pais])
         return pais, region
 
-def calcular_probabilidad_fraude(row):
-    """
-    PATRÓN DE FRAUDE - SUMA DE PORCENTAJES
-    =======================================
-    Base:                        1%
-    + País operación != home:   15%
-    + Región operación != home:  5%  (solo si mismo país)
-    + Dispositivo no reconocido:10%
-    + Cuenta bloqueada:         15%
-    + Tarjeta robada/extraviada:25%
-    + Importe > 90% límite:     10%
-    + Noche + importe > 500:     5%
-    + Vol. saliente > 3x entrante:3%
-    + >5 transacciones última h: 8%
-    + Última transac <60s y >1000:6%
-    + Veces superar límite >3:  10%
-    + Método autenticación firma:2%
-    + PIN disponibles = 0:       8%
-    + Tipo transferencia:        5%
-    + Cuenta destino alto riesgo:20%
-    Cap máximo:                 95%
-    """
+# ============================================================
+# PROBABILIDAD BASE (misma que v1 original)
+# ============================================================
+def calcular_probabilidad_base(row):
     prob = 0.01
-
-    if row['customer_country'] != row['operacion_pais']:
-        prob += 0.15
-    elif row['customer_region'] != row['operacion_region']:
-        prob += 0.05
-
-    if row['dispositivo_reconocido'] == 0:
-        prob += 0.10
-
-    if row['estado_cuenta'] == 'bloqueada':
-        prob += 0.15
-
-    if row['estado_tarjeta'] in ('robada', 'extraviada', 'bloqueada'):
-        prob += 0.25
-
-    if row['importe_transaccion'] > row['limite_importe_transacciones'] * 0.9:
-        prob += 0.10
-
-    if row['is_night'] and row['importe_transaccion'] > 500:
-        prob += 0.05
-
-    if row['volumen_saliente_30_dias'] > row['volumen_entrante_30_dias'] * 3:
-        prob += 0.03
-
-    if row['numero_transacciones_ultima_hora'] > 5:
-        prob += 0.08
-
-    if row['tiempo_desde_ultima_transaccion'] < 60 and row['importe_transaccion'] > 1000:
-        prob += 0.06
-
-    if row['veces_superar_limite_7_dias'] > 3:
-        prob += 0.10
-
-    if row['metodo_autenticacion'] == 'firma':
-        prob += 0.02
-
-    if row['numero_pin_disponibles'] == 0:
-        prob += 0.08
-
-    if row['tipo_transaccion'] == 'transferencia':
-        prob += 0.05
-
-    if row.get('destino_alto_riesgo', 0) == 1:
-        prob += 0.20
-
+    cm = row['customer_country'] != row['operacion_pais']
+    rm = (row['customer_country'] == row['operacion_pais'] and
+          row['customer_region'] != row['operacion_region'])
+    if cm: prob += 0.15
+    elif rm: prob += 0.05
+    if row['dispositivo_reconocido'] == 0: prob += 0.10
+    if row['estado_cuenta'] == 'bloqueada': prob += 0.15
+    if row['estado_tarjeta'] in ('robada', 'extraviada', 'bloqueada'): prob += 0.25
+    if row['importe_transaccion'] > row['limite_importe_transacciones'] * 0.9: prob += 0.10
+    if row['is_night'] and row['importe_transaccion'] > 500: prob += 0.05
+    if row['volumen_saliente_30_dias'] > row['volumen_entrante_30_dias'] * 3: prob += 0.03
+    if row['numero_transacciones_ultima_hora'] > 5: prob += 0.08
+    if row['tiempo_desde_ultima_transaccion'] < 60 and row['importe_transaccion'] > 1000: prob += 0.06
+    if row['veces_superar_limite_7_dias'] > 3: prob += 0.10
+    if row['metodo_autenticacion'] == 'firma': prob += 0.02
+    if row['numero_pin_disponibles'] == 0: prob += 0.08
+    if row['tipo_transaccion'] == 'transferencia': prob += 0.05
+    if row['destino_alto_riesgo'] == 1: prob += 0.20
     return min(prob, 0.95)
+
+# ============================================================
+# MODIFICADOR POST-FRAUDE (crea señal discriminatoria fuerte)
+# ============================================================
+def inyectar_senal_fraude(row):
+    """Modifica features de transacciones fraudulentas para crear
+    distribuciones diferentes entre fraude y no-fraude."""
+    # País de operación diferente al del cliente
+    if np.random.random() < 0.55:
+        paises = [p for p in paises_regiones if p != row['customer_country']]
+        row['operacion_pais'] = np.random.choice(paises)
+        row['operacion_region'] = np.random.choice(paises_regiones[row['operacion_pais']])
+
+    # Dispositivo no reconocido
+    if np.random.random() < 0.60:
+        row['dispositivo_reconocido'] = 0
+
+    # Estado tarjeta robada o extraviada
+    if np.random.random() < 0.35:
+        row['estado_tarjeta'] = np.random.choice(['robada', 'extraviada'])
+
+    # Alta velocidad de transacciones
+    if np.random.random() < 0.45:
+        row['numero_transacciones_ultima_hora'] = np.random.randint(6, 20)
+
+    # Importe cerca del límite
+    if np.random.random() < 0.40:
+        row['importe_transaccion'] = round(
+            row['limite_importe_transacciones'] * np.random.uniform(0.85, 0.99), 2)
+
+    # Sin PIN disponible
+    if np.random.random() < 0.35:
+        row['numero_pin_disponibles'] = 0
+
+    # Autenticación débil
+    if np.random.random() < 0.35:
+        row['metodo_autenticacion'] = np.random.choice(['firma', '3DS'])
+
+    # Cuenta destino de alto riesgo
+    if np.random.random() < 0.30:
+        row['destino_alto_riesgo'] = 1
+
+    # Volumen saliente >> entrante
+    if np.random.random() < 0.25:
+        row['volumen_saliente_30_dias'] = row['volumen_entrante_30_dias'] * np.random.uniform(4, 8)
+        row['volumen_saliente_30_dias'] = round(row['volumen_saliente_30_dias'], 2)
+
+    # Tiempo desde última transacción muy corto
+    if np.random.random() < 0.30:
+        row['tiempo_desde_ultima_transaccion'] = np.random.randint(5, 55)
+
+    return row
 
 # ============================================================
 # NIVEL 4: TRANSACCIONES
 # ============================================================
 registros = []
 ultima_transaccion_por_tarjeta = {}
-ids_cuenta_destino_usados = []
 
 for _ in range(N):
     t = np.random.choice(tarjetas)
@@ -241,7 +239,6 @@ for _ in range(N):
     tipo_tx = np.random.choice(tipos_transaccion, p=[0.7, 0.3])
 
     row = {
-        # Cliente
         'id_cliente': c['id_cliente'],
         'tipo_cliente': c['tipo_cliente'],
         'edad_cliente': c['edad_cliente'],
@@ -252,7 +249,6 @@ for _ in range(N):
         'desviacion_estandar_mensual': c['desviacion_estandar_mensual'],
         'media_transacciones_al_dia': c['media_transacciones_al_dia'],
         'numero_fraudes_ultimo_ano': c['numero_fraudes_ultimo_ano'],
-        # Cuenta origen
         'id_cuenta': cu['id_cuenta'],
         'cuenta_origen': cu['cuenta_origen'],
         'estado_cuenta': cu['estado_cuenta'],
@@ -262,14 +258,12 @@ for _ in range(N):
         'volumen_saliente_30_dias': cu['volumen_saliente_30_dias'],
         'numero_transferencias_recibidas_7_dias': cu['numero_transferencias_recibidas_7_dias'],
         'numero_transferencias_enviadas_7_dias': cu['numero_transferencias_enviadas_7_dias'],
-        # Tarjeta
         'id_tarjeta': t['id_tarjeta'],
         'estado_tarjeta': t['estado_tarjeta'],
         'fecha_creacion_tarjeta': t['fecha_creacion_tarjeta'],
         'antiguedad_tarjeta_dias': t['antiguedad_tarjeta_dias'],
         'limite_importe_transacciones': t['limite_importe_transacciones'],
         'veces_superar_limite_7_dias': t['veces_superar_limite_7_dias'],
-        # Transacción
         'id_transaccion': str(uuid.uuid4())[:12],
         'tipo_transaccion': tipo_tx,
         'fecha_hora': fecha_hora,
@@ -280,25 +274,25 @@ for _ in range(N):
         'importe_transaccion': importe,
         'metodo_autenticacion': np.random.choice(metodos_auth, p=[0.4, 0.15, 0.3, 0.1, 0.05]),
         'numero_pin_disponibles': np.random.choice([0, 1, 2, 3], p=[0.02, 0.30, 0.50, 0.18]),
-        # Dispositivo y ubicación
         'identificador_dispositivo_fingerprint': str(uuid.uuid4())[:16],
         'dispositivo_reconocido': 1 if np.random.random() < 0.85 else 0,
         'operacion_pais': operacion_pais,
         'operacion_region': operacion_region,
         'direccion_ip_origen': generar_ip(operacion_pais),
         'geolocalizacion': generar_geoloc(operacion_pais),
-        # Cuenta destino
         'cuenta_destino': dest['cuenta_destino'],
         'destino_alto_riesgo': dest['destino_alto_riesgo'],
-        # Etiqueta
         'IS_FRAUD': 0,
     }
 
-    prob_fraude = calcular_probabilidad_fraude(row)
+    # Determinar si es fraude (usando lógica base)
+    prob_fraude = calcular_probabilidad_base(row)
     row['IS_FRAUD'] = 1 if np.random.random() < prob_fraude else 0
 
+    # Si es fraude, inyectar señal fuerte en las features
     if row['IS_FRAUD'] == 1:
         c['numero_fraudes_ultimo_ano'] += 1
+        row = inyectar_senal_fraude(row)
 
     registros.append(row)
 
@@ -335,6 +329,6 @@ columnas_final = [
 df = df[columnas_final]
 output_dir = Path(__file__).resolve().parent.parent.parent / 'data'
 output_dir.mkdir(exist_ok=True)
-output_path = output_dir / 'dataset_fraude.csv'
+output_path = output_dir / 'dataset_fraude_mejorado.csv'
 df.to_csv(output_path, index=False, encoding='utf-8')
 print(f"Dataset guardado en {output_path}")

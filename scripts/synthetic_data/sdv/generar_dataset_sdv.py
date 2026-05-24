@@ -1,8 +1,10 @@
 import pandas as pd
 from sdv.metadata import SingleTableMetadata
 from sdv.single_table import GaussianCopulaSynthesizer
+from pathlib import Path
 
-df_real = pd.read_csv('dataset_fraude.csv', parse_dates=['fecha_hora', 'fecha_creacion_tarjeta'])
+data_dir = Path(__file__).resolve().parent.parent.parent.parent / 'data'
+df_real = pd.read_csv(data_dir / 'dataset_fraude.csv', parse_dates=['fecha_hora', 'fecha_creacion_tarjeta'])
 
 metadata = SingleTableMetadata()
 metadata.detect_from_dataframe(df_real)
@@ -32,9 +34,10 @@ synthesizer.fit(df_real)
 
 synthetic_data = synthesizer.sample(num_rows=10000)
 
-synthetic_data.to_csv('dataset_fraude_sdv.csv', index=False, encoding='utf-8')
+output_path = data_dir / 'dataset_fraude_sdv.csv'
+synthetic_data.to_csv(output_path, index=False, encoding='utf-8')
 print(f"\nDatos sintéticos generados: {len(synthetic_data)} filas")
-print("Guardado en dataset_fraude_sdv.csv")
+print(f"Guardado en {output_path}")
 
 print("\nPrimeras 5 filas:")
 print(synthetic_data.head())
