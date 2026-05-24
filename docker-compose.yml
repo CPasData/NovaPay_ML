@@ -7,9 +7,6 @@ services:
       - "8000:8000"                 # localhost:8000 → contenedor:8000
     volumes:
       - ./app.py:/app/app.py        # hot-reload: los cambios en app.py se reflejan al instante
+      - ./model:/app/model        
     environment:
-      ENV: development
-    # Cuando tengamos modelo, quitamos comentarios a continuacion
-    # volumes:
-    #   - ./app.py:/app/app.py
-    #   - ./model:/app/model
+      ENV: development    

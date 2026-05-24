@@ -25,8 +25,8 @@ COPY --from=builder /install /usr/local
 # Copiamos el código de la aplicación
 COPY app.py .
 
-# Cuando tengamos el modelo, descomentar esta línea (.pkl en directorio model)
-# COPY model/model.pkl ./model/model.pkl
+# Copiar modelo final
+COPY model/modelo_07_v1.pkl ./model/modelo_07_v1.pkl
 
 # Variables de entorno
 ENV PYTHONDONTWRITEBYTECODE=1 \
