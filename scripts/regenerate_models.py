@@ -29,7 +29,7 @@ datasets = [
     {
         'name': 'v1',
         'label': 'v1 (original)',
-        'data_path': base.parent / 'Notebooks' / 'data' / 'dataset_fraude.csv',
+        'data_path': base.parent / 'data' / 'dataset_fraude.csv',
         'savename': 'modelo_07_v1.pkl',
         'lgb_params': {
             'learning_rate': 0.05, 'min_child_samples': 20,
@@ -45,7 +45,7 @@ datasets = [
     {
         'name': 'v2',
         'label': 'v2 (mejorado)',
-        'data_path': base.parent / 'scripts' / 'synthetic_data' / 'dataset_fraude_mejorado.csv',
+        'data_path': base.parent / 'data' / 'dataset_fraude_mejorado.csv',
         'savename': 'modelo_08_v2.pkl',
         'lgb_params': {
             'learning_rate': 0.1, 'min_child_samples': 100,

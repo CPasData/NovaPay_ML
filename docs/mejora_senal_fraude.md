@@ -93,17 +93,8 @@ ya está validado.
 ## Cómo Usar
 
 ```bash
-cd scripts/synthetic_data
-python generar_dataset_fraude_mejorado.py
+python scripts/synthetic_data/generar_dataset_fraude_mejorado.py
 ```
 
-Esto produce `dataset_fraude_mejorado.csv` con las **mismas columnas** que el
-original. Los notebooks existentes pueden usar este dataset sin ningún cambio.
-
-Para entrenar el modelo riguroso con los datos mejorados:
-
-```bash
-cp scripts/synthetic_data/dataset_fraude_mejorado.csv model/dataset_fraude.csv
-```
-
-O modificar la ruta en el notebook correspondiente.
+Esto produce `data/dataset_fraude_mejorado.csv` con las **mismas columnas** que el
+original.

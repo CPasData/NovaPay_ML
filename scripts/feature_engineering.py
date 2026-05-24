@@ -35,7 +35,6 @@ NUM_COLS = [
 ]
 
 TARGET_BINARY = 'IS_FRAUD'
-TARGET_IMPACTO = 'IMPACTO_FRAUDE'
 
 
 def _safe_ratio(a, b, fill=0):

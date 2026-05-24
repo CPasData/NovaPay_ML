@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from faker import Faker
 from datetime import datetime, timedelta
+from pathlib import Path
 import random
 import uuid
 
@@ -298,14 +299,6 @@ for _ in range(N):
 
     if row['IS_FRAUD'] == 1:
         c['numero_fraudes_ultimo_ano'] += 1
-        if row['importe_transaccion'] < 500:
-            row['IMPACTO_FRAUDE'] = 1  # Bajo impacto
-        elif row['importe_transaccion'] < 2000:
-            row['IMPACTO_FRAUDE'] = 2  # Medio impacto
-        else:
-            row['IMPACTO_FRAUDE'] = 3  # Alto impacto
-    else:
-        row['IMPACTO_FRAUDE'] = 0      # No fraude
 
     registros.append(row)
 
@@ -336,9 +329,12 @@ columnas_final = [
     'operacion_pais', 'operacion_region',
     'direccion_ip_origen', 'geolocalizacion',
     'cuenta_destino', 'destino_alto_riesgo',
-    'IS_FRAUD', 'IMPACTO_FRAUDE',
+    'IS_FRAUD',
 ]
 
 df = df[columnas_final]
-df.to_csv('dataset_fraude.csv', index=False, encoding='utf-8')
-print("Dataset guardado en dataset_fraude.csv")
+output_dir = Path(__file__).resolve().parent.parent.parent / 'data'
+output_dir.mkdir(exist_ok=True)
+output_path = output_dir / 'dataset_fraude.csv'
+df.to_csv(output_path, index=False, encoding='utf-8')
+print(f"Dataset guardado en {output_path}")

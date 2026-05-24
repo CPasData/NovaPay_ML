@@ -1,3 +1,8 @@
+"""
+LEGACY - reemplazado por regenerate_models.py
+Los modelos guardados con este script NO incluyen XGBoost, ensemble weights,
+KNNImputer, ni threshold F2. Solo se conserva como referencia.
+"""
 import warnings, sys, joblib
 warnings.filterwarnings('ignore')
 from pathlib import Path
@@ -16,7 +21,7 @@ models_dir.mkdir(exist_ok=True)
 
 # === MODELO 07: v1 original ===
 print('=== Modelo 07 (v1 original) ===')
-df = pd.read_csv(base.parent / 'Notebooks' / 'data' / 'dataset_fraude.csv')
+df = pd.read_csv(base.parent / 'data' / 'dataset_fraude.csv')
 df = df.drop(columns=['IMPACTO_FRAUDE'], errors='ignore')
 print(f'  Filas: {len(df)}  Fraude: {df["IS_FRAUD"].sum()} ({df["IS_FRAUD"].mean()*100:.2f}%)')
 
@@ -45,7 +50,7 @@ print(f'  Guardado: {models_dir / "modelo_07_v1.pkl"}')
 # === MODELO 08: v2 mejorado ===
 print()
 print('=== Modelo 08 (v2 mejorado) ===')
-df2 = pd.read_csv(base.parent / 'scripts' / 'synthetic_data' / 'dataset_fraude_mejorado.csv')
+df2 = pd.read_csv(base.parent / 'data' / 'dataset_fraude_mejorado.csv')
 df2 = df2.drop(columns=['IMPACTO_FRAUDE'], errors='ignore')
 print(f'  Filas: {len(df2)}  Fraude: {df2["IS_FRAUD"].sum()} ({df2["IS_FRAUD"].mean()*100:.2f}%)')
 

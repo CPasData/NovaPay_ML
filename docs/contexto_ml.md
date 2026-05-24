@@ -27,35 +27,36 @@ usando datos sintéticos generados con Faker. El proyecto incluye:
 C:\Dev\NovaPay_ML\
 ├── model/                          # Código principal y modelos
 │   ├── feature_engineering.py      # Transformer v3 (67 features)
-│   ├── __init__.py                 # Package init
-│   ├── 01_train_fraud.ipynb        # Entrenamiento IS_FRAUD (8 modelos, legado)
-│   ├── 02_train_impacto.ipynb      # Entrenamiento IMPACTO_FRAUDE (multiclase, legado)
-│   ├── 03_feature_engineering_deep_dive.ipynb  # Análisis v3 (incluye sección sesión/red)
-│   ├── 04_pipeline_fraud.ipynb     # Pipeline producción IS_FRAUD (legado)
-│   ├── 05_pipeline_impacto.ipynb   # Pipeline producción IMPACTO_FRAUDE (legado)
-│   ├── 06_model_selection_deep_dive.ipynb  # Comparación de modelos + ensemble
-│   ├── 07_train_fraud_rigorous.ipynb  # Notebook riguroso v1 (LGB + XGB, legado)
-│   ├── 08_train_fraud_mejorado.ipynb  # Notebook riguroso v2 (LGB + XGB, legado)
-│   ├── 09_pipeline_completo.ipynb  # Pipeline completo actualizado v3
-│   ├── regenerate_models.py        # Script que regenera ambos .pkl con pipeline completo
-│   ├── inference_example.py        # Ejemplo de inferencia con modelo guardado
-│   ├── save_models.py              # Script legacy (reemplazado por regenerate_models.py)
-│   └── saved_models/
-│       ├── modelo_07_v1.pkl        # Pipeline completo entrenado con v1
-│       └── modelo_08_v2.pkl        # Pipeline completo entrenado con v2
-│
-├── scripts/
+│   ├── feature_engineering.py       # FE v3 (67 features, session/red/temporales)
+│   ├── regenerate_models.py         # Regenera ambos .pkl con pipeline completo
+│   ├── inference_example.py         # Ejemplo de inferencia con modelo guardado
+│   ├── save_models.py               # Legacy (reemplazado por regenerate_models.py)
+│   ├── saved_models/
+│   │   ├── modelo_07_v1.pkl         # Pipeline FE v3 + Scaler + Imputer + LGB + XGB + w + thr
+│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2
 │   └── synthetic_data/
 │       ├── generar_dataset_fraude.py          # Generador v1 (señal débil)
 │       ├── generar_dataset_fraude_mejorado.py # Generador v2 (señal fuerte)
-│       ├── mejora_senal_fraude.md             # Documentación de mejora de señal
-│       ├── CONTEXTO_PROYECTO.md               # ← ESTE DOCUMENTO
-│       ├── esquema_bd.sql                     # Esquema de base de datos
 │       └── sdv/
 │           └── generar_dataset_sdv.py         # Generador alternativo con SDV
 │
-└── Notebooks/
-    └── EDA.ipynz                               # Análisis exploratorio inicial
+├── notebooks/
+│   ├── 07_train_fraud_v1.ipynb      # Entrenamiento v1 (LGB + XGB)
+│   ├── 08_train_fraud_v2.ipynb      # Entrenamiento v2 (LGB + XGB)
+│   ├── 09_pipeline_completo.ipynb   # Pipeline completo FE v3 + Ensemble + F2 thr
+│   ├── 09_pipeline_completo_v1.ipynb # Pipeline completo sobre v1
+│   └── EDA.ipynb                    # Análisis exploratorio inicial
+│
+├── data/
+│   ├── dataset_fraude.csv           # v1 (10K txns, ~15% fraude)
+│   └── dataset_fraude_mejorado.csv  # v2 (10K txns, ~15% fraude, señal mejorada)
+│
+└── docs/
+    ├── contexto_ml.md               # ← ESTE DOCUMENTO
+    ├── mejora_senal_fraude.md       # Documentación de mejora de señal
+    ├── esquema_bd.sql               # Esquema de base de datos
+    ├── 03_feature_engineering_deep_dive.ipynb  # Análisis v3 (sesión/red/temporales)
+    └── 06_model_selection_deep_dive.ipynb      # Comparación de modelos + ensemble
 ```
 
 ---
@@ -279,9 +280,9 @@ Cada `.pkl` contiene el **pipeline completo** en un solo archivo:
 ```python
 import sys, joblib
 sys.path.append('/ruta/al/proyecto')
-from model.feature_engineering import FeatureEngineer  # necesaria para deserializar
+from scripts.feature_engineering import FeatureEngineer  # necesaria para deserializar
 
-obj = joblib.load('modelo_08_v2.pkl')
+obj = joblib.load('scripts/saved_models/modelo_08_v2.pkl')
 
 # Pipeline de inferencia
 X = obj['fe'].transform(df_nuevo)

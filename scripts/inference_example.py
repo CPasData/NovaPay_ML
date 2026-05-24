@@ -2,7 +2,7 @@
 Ejemplo de inferencia con modelos guardados.
 
 Uso:
-    python model/inference_example.py
+    python scripts/inference_example.py
 
 Los .pkl contienen:
     fe        -> FeatureEngineer (fitted v3)
@@ -26,9 +26,9 @@ from pathlib import Path
 # ============================================================
 # Ejecutar desde la raíz del proyecto
 sys.path.append(str(Path.cwd()))
-from model.feature_engineering import FeatureEngineer
+from scripts.feature_engineering import FeatureEngineer
 
-model_path = Path.cwd() / 'model' / 'saved_models' / 'modelo_08_v2.pkl'
+model_path = Path.cwd() / 'scripts' / 'saved_models' / 'modelo_08_v2.pkl'
 obj = joblib.load(model_path)
 
 fe = obj['fe']
@@ -48,8 +48,7 @@ print(f'  Features: {len(num_feats)} numéricas')
 # ============================================================
 # 2. Cargar datos nuevos (mismas columnas que entrenamiento)
 # ============================================================
-df = pd.read_csv(Path.cwd() / 'scripts' / 'synthetic_data' / 'dataset_fraude_mejorado.csv')
-df = df.drop(columns=['IMPACTO_FRAUDE'], errors='ignore')
+df = pd.read_csv(Path.cwd() / 'data' / 'dataset_fraude_mejorado.csv')
 y_true = df['IS_FRAUD'].values
 
 # ============================================================
