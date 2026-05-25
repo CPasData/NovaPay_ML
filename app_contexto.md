@@ -229,17 +229,14 @@ Body:     [ { transaccion1 }, { transaccion2 }, { transaccion3 } ]
 
 ---
 
-### `GET /metrics`
+### `GET /metrics  -- ELIMINADO`
 **¿Para qué sirve?** Ver métricas del modelo en tiempo real.  
 **¿Quién lo usa?**
 - **Full Stack** → para mostrar el dashboard de KPIs al analista
 - **Data Science** → para ver cómo está funcionando el modelo
 
-**No recibe ningún dato.** Lee directamente de Supabase.
+**No recibe ningún dato.** Lee directamente de la base de datos.
 
-```
-Llamada:  GET http://localhost:8000/metrics
-```
 
 ```json
 {
@@ -254,6 +251,17 @@ Llamada:  GET http://localhost:8000/metrics
 }
 ```
 
+```
+SELECT COUNT(*) AS total_predicciones,
+  SUM(CASE WHEN is_fraud = 1 THEN 1 ELSE 0 END)  AS fraudes_detectados,
+  SUM(CASE WHEN is_fraud = 0 THEN 1 ELSE 0 END)  AS legitimas,
+  ROUND(AVG(prob_fraud)::numeric, 4)             AS prob_fraud_media,
+  SUM(CASE WHEN estado_revision = 'pendiente'THEN 1 ELSE 0 END) AS pendientes_revision,
+  SUM(CASE WHEN estado_revision = 'confirmado_fraude' THEN 1 ELSE 0 END) AS confirmados_fraude,
+  SUM(CASE WHEN estado_revision = 'falso_positivo' THEN 1 ELSE 0 END) AS falsos_positivos
+  FROM transacciones
+  WHERE is_fraud IS NOT NULL
+```
 ---
 
 ## Campos que recibe la API
@@ -308,42 +316,4 @@ Los datos se envían con los **mismos nombres que están en la BD**:
 
 ---
 
-## Lo que guarda automáticamente en Base de Datos
-
-Cada vez que se llama a `/predict` o `/predict/batch` la API guarda ademas de los datos enviados los siguientes datos en la tabla `transacciones`:
-
-**Campos que calcula el modelo:**
-
-| Campo | Descripción |
-|-------|-------------|
-| `is_fraud` | 0=legítima, 1=fraude |
-| `prob_fraud` | Probabilidad de fraude |
-| `impacto_fraude` | 0=no fraude, 1=bajo, 2=medio, 3=alto |
-| `es_transfronteriza` | Operación desde otro país |
-| `ratio_imp_limite` | Importe / límite tarjeta |
-| `intensidad_tx` | Intensidad de transacciones |
-| `severidad_tx` | Importe × num transacciones |
-| `flujo_neto_30d` | Vol entrante − vol saliente |
-| `estado_revision` | `pendiente` si fraude, `legitima` si no |
-
-**Campos que rellena el analista via Full Stack:**
-
-| Campo | Descripción |
-|-------|-------------|
-| `target_final` | TRUE=fraude confirmado, FALSE=falso positivo |
-| `estado_revision` | `confirmado_fraude` / `falso_positivo` / `legitima` |
-| `id_usuario` | Analista que revisó |
-| `fecha_revision` | Cuándo fue revisada |
-
----
-
-## Pendientes
-
-| Tarea | Equipo | Estado |
-|-------|--------|--------|
-| Despliegue en AWS EC2 con Docker | Data Science | Pendiente |
-| Crear BD en Supabase | Full Stack | Pendiente |
-| Conectar app.py a Supabase | Data Science | Pendiente URL |
-| Endpoint PUT /review (actualizar revisión) | Full Stack (Node) | Pendiente confirmación |
-| Reentrenamiento Ronda 2 | Data Science | Pendiente Ronda 1 |
 
