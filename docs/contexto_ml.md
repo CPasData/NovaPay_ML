@@ -25,15 +25,19 @@ usando datos sintéticos generados con Faker. El proyecto incluye:
 
 ```
 C:\Dev\NovaPay_ML\
-├── model/                          # Código principal y modelos
-│   ├── feature_engineering.py      # Transformer v3 (67 features)
+├── scripts/                         # Código principal
 │   ├── feature_engineering.py       # FE v3 (67 features, session/red/temporales)
-│   ├── regenerate_models.py         # Regenera ambos .pkl con pipeline completo
+│   ├── regenerate_models.py         # Regenera ambos .pkl + copia .py a saved_models/
 │   ├── inference_example.py         # Ejemplo de inferencia con modelo guardado
+│   ├── prediccion_lote.py           # Batch inference: input CSV → output CSV + predicciones
+│   ├── evaluacion_rondas.py         # Evaluación por rondas de 100 txns (simula producción, detecta drift)
+│   ├── generar_muestra_sin_etiqueta.py  # Genera CSV sin IS_FRAUD (para testear API/inferencia)
 │   ├── save_models.py               # Legacy (reemplazado por regenerate_models.py)
+│   ├── __init__.py
 │   ├── saved_models/
+│   │   ├── feature_engineering.py   # Copia autónoma para carga sin scripts/ en sys.path
 │   │   ├── modelo_07_v1.pkl         # Pipeline FE v3 + Scaler + Imputer + LGB + XGB + w + thr
-│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2
+│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2 (mejorado)
 │   └── synthetic_data/
 │       ├── generar_dataset_fraude.py          # Generador v1 (señal débil)
 │       ├── generar_dataset_fraude_mejorado.py # Generador v2 (señal fuerte)
@@ -45,18 +49,25 @@ C:\Dev\NovaPay_ML\
 │   ├── 08_train_fraud_v2.ipynb      # Entrenamiento v2 (LGB + XGB)
 │   ├── 09_pipeline_completo.ipynb   # Pipeline completo FE v3 + Ensemble + F2 thr
 │   ├── 09_pipeline_completo_v1.ipynb # Pipeline completo sobre v1
-│   └── EDA.ipynb                    # Análisis exploratorio inicial
+│   ├── EDA.ipynb                    # Análisis exploratorio inicial
+│   ├── EDA_v2.ipynb                 # Análisis exploratorio ronda 2
+│   └── docs/
+│       └── contexto_eda.md          # Documentación del EDA
 │
 ├── data/
 │   ├── dataset_fraude.csv           # v1 (10K txns, ~15% fraude)
 │   └── dataset_fraude_mejorado.csv  # v2 (10K txns, ~15% fraude, señal mejorada)
 │
-└── docs/
-    ├── contexto_ml.md               # ← ESTE DOCUMENTO
-    ├── mejora_senal_fraude.md       # Documentación de mejora de señal
-    ├── esquema_bd.sql               # Esquema de base de datos
-    ├── 03_feature_engineering_deep_dive.ipynb  # Análisis v3 (sesión/red/temporales)
-    └── 06_model_selection_deep_dive.ipynb      # Comparación de modelos + ensemble
+├── docs/
+│   ├── contexto_ml.md               # ← ESTE DOCUMENTO
+│   ├── mejora_senal_fraude.md       # Documentación de mejora de señal
+│   ├── residuos_y_evaluacion.md     # Análisis de residuos y técnicas de evaluación
+│   ├── esquema_bd.sql               # Esquema de base de datos
+│   ├── 03_feature_engineering_deep_dive.ipynb  # Análisis v3 (sesión/red/temporales)
+│   └── 06_model_selection_deep_dive.ipynb      # Comparación de modelos + ensemble
+│
+├── app.py                           # API FastAPI para inferencia
+└── README.md
 ```
 
 ---
@@ -220,22 +231,21 @@ Clase `FeatureEngineer` (hereda de `BaseEstimator, TransformerMixin`). Versión 
 ```powershell
 cd C:\Dev\NovaPay_ML
 # Para v2 (mejorado)
-jupyter nbconvert --execute --to notebook model\09_pipeline_completo.ipynb
+jupyter nbconvert --execute --to notebook notebooks\09_pipeline_completo.ipynb
 # Para v1, cambiar DATASET = 'v1' en la celda de configuración
 ```
 
-### 5.2 `07_train_fraud_rigorous.ipynb` — Notebook riguroso (legado, v1)
+### 5.2 `07_train_fraud_v1.ipynb` — Entrenamiento v1 (legado)
 
-Idéntico en estructura a `09` pero sin KNNImputer, sin ensemble, sin FE v3. Reemplazado por `09`.
+Entrenamiento con FE v3, LightGBM + XGBoost sin ensemble/KNNImputer/F2. Reemplazado por `09_pipeline_completo.ipynb`.
 
-### 5.3 `08_train_fraud_mejorado.ipynb` — Notebook mejorado (legado, v2)
+### 5.3 `08_train_fraud_v2.ipynb` — Entrenamiento v2 (legado)
 
 Misma estructura que `07` pero con datos v2. Reemplazado por `09`.
 
 ### 5.4 Notebooks legacy (01–06)
 
-`01`–`06` son notebooks originales con 8 modelos, GridSearchCV completo. No se actualizaron a v3.
-Ejecutan sin errores en sklearn 1.8 pero usan FE v1/v2.
+`01`–`06` eran notebooks originales con 8 modelos y GridSearchCV completo. Ya no están en el repositorio (reemplazados por los notebooks en `notebooks/` y los deep-dives en `docs/`).
 
 ---
 
@@ -275,14 +285,20 @@ Cada `.pkl` contiene el **pipeline completo** en un solo archivo:
 
 ### 6.3 Carga e inferencia
 
-**Solo se necesita 1 archivo** (el `.pkl`) + `feature_engineering.py` accesible en el `sys.path`:
+**Para cargar solo necesitas 2 archivos**: el `.pkl` + `feature_engineering.py` en el mismo directorio.
+`regenerate_models.py` ya los copia automáticamente a `saved_models/`.
+
+Carga autónoma (funciona copiando la carpeta `saved_models/` a cualquier máquina):
 
 ```python
 import sys, joblib
-sys.path.append('/ruta/al/proyecto')
-from scripts.feature_engineering import FeatureEngineer  # necesaria para deserializar
+from pathlib import Path
 
-obj = joblib.load('scripts/saved_models/modelo_08_v2.pkl')
+pkl_dir = Path('scripts/saved_models')
+sys.path.insert(0, str(pkl_dir))
+from feature_engineering import FeatureEngineer
+
+obj = joblib.load(str(pkl_dir / 'modelo_08_v2.pkl'))
 
 # Pipeline de inferencia
 X = obj['fe'].transform(df_nuevo)
@@ -296,15 +312,13 @@ y_prob = obj['best_w'] * p_lgb + (1 - obj['best_w']) * p_xgb
 y_pred = (y_prob >= obj['best_t']).astype(int)
 ```
 
-Ver `model/inference_example.py` para ejemplo completo.
+Ver `scripts/inference_example.py` para ejemplo completo.
 
-### 6.4 Regeneración
-
-Ejecutar desde `model/`:
+Ejecutar desde `scripts/`:
 
 ```powershell
-cd C:\Dev\NovaPay_ML\model
-python regenerate_models.py
+cd C:\Dev\NovaPay_ML
+python scripts\regenerate_models.py
 ```
 
 El script entrena ambos modelos (v1 y v2) con pipeline completo (FE v3 → KNNImputer → Scaler → LGB + XGB → ensemble → F2 thr) y los guarda.
@@ -360,46 +374,161 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 - Feature Engineering v3 con 67 features (sesión, red, desviaciones, capping, flags compuestas)
 - `09_pipeline_completo.ipynb` verificado (v2: PR-AUC 0.9640, Recall 95.3%, Precision 77.2%)
 - Modelos `.pkl` regenerados con pipeline completo (FE v3 + Scaler + Imputer + Ensemble + Threshold)
-- `inference_example.py`: ejemplo funcional de inferencia
+- `feature_engineering.py` se copia automáticamente a `saved_models/` para carga autónoma
+- `inference_example.py`: ejemplo funcional de inferencia (ahora usa `sys.path.insert(0, pkl_dir)`)
+- `prediccion_lote.py`: batch inference — CSV de entrada → CSV con predicciones añadidas
+- `evaluacion_rondas.py`: evalúa modelo en rondas de 100 txns, simula producción, detecta drift (PSI)
+- `generar_muestra_sin_etiqueta.py`: genera CSV sin IS_FRAUD para testear API/inferencia
+- `residuos_y_evaluacion.md`: estudio completo de técnicas de análisis de residuos
 - `regenerate_models.py`: script que regenera ambos modelos
-- Todos los notebooks actualizados con paths correctos (`Path.cwd()` en lugar de `Path.cwd().parent`)
+- `app.py`: API FastAPI para inferencia en producción
+- Todos los notebooks y scripts con paths correctos (`scripts/`, `notebooks/`, `data/`, `docs/`)
+- `IMPACTO_FRAUDE` eliminado de generadores — se calcula post-inferencia como regla de negocio
+- Generadores actualizados para guardar en `data/` automáticamente
+- Estructura final del proyecto consolidada (data/ scripts/ notebooks/ docs/)
 - `03_feature_engineering_deep_dive.ipynb` actualizado con sección v3
 - `06_model_selection_deep_dive.ipynb` actualizado con sección ensemble
 - Deep-dive notebooks ejecutándose sin errores
 
-### Pendiente / A decidir:
+### Pendiente / A decidir (próximas iteraciones):
+- Refinamiento continuo del modelo: hiperparámetros, nuevas features (v4), otros algoritmos
+- Mejora en la generación de datos sintéticos
+- Llevar a producción: API, monitoreo, métricas en vivo
 - CatBoost no instalado — notebooks lo manejan con try/except
 - Para producción real, el umbral F2 debe recalibrarse con datos reales
-- `modelo_07_v1.pkl` tiene PR-AUC 0.3236 — señalar que es un dataset con señal débil, no usar en producción
+- `modelo_07_v1.pkl` tiene PR-AUC 0.3236 — dataset con señal débil, no usar en producción
+
+### Roles:
+- **Colaborador (ML/DS)**: entrenamiento del modelo, feature engineering, generación de datos sintéticos
+- No hay dependencias externas bloqueantes para continuar
 
 ---
 
 ## 9. Cómo Usar
 
-### Para entrenar (regenerar modelos):
-
-```powershell
-cd C:\Dev\NovaPay_ML\model
-python regenerate_models.py
-```
-
-### Para inferencia en producción:
+Todos los comandos se ejecutan desde la raíz del proyecto:
 
 ```powershell
 cd C:\Dev\NovaPay_ML
-python model\inference_example.py
 ```
 
-### Para explorar resultados:
+### 9.1 Entrenar / regenerar modelos
 
 ```powershell
-cd C:\Dev\NovaPay_ML
+python scripts\regenerate_models.py
+```
+
+Entrena v1 y v2 desde cero con pipeline completo (FE v3 → KNNImputer → Scaler → LGB + XGB → ensemble → F2 thr) y copia `feature_engineering.py` a `saved_models/` para carga autónoma.
+
+### 9.2 Generar datos sintéticos
+
+```powershell
+# Dataset original v1 (señal débil, 10K transacciones)
+python scripts\synthetic_data\generar_dataset_fraude.py
+
+# Dataset mejorado v2 (señal fuerte, 10K transacciones)
+python scripts\synthetic_data\generar_dataset_fraude_mejorado.py
+
+# Dataset sin etiqueta (para testear API/inferencia)
+python scripts\generar_muestra_sin_etiqueta.py --n 500 --output data/muestra_test.csv
+```
+
+Los datasets etiquetados se guardan en `data/`. El dataset sin etiqueta se guarda donde se indique.
+
+### 9.3 Inferencia (una transacción)
+
+```powershell
+# Ejemplo completo con modelo v2
+python scripts\inference_example.py
+
+# O vía API
+uvicorn app:app --reload
+# POST http://localhost:8000/predict
+```
+
+### 9.4 Batch inference (CSV → CSV con predicciones + FE)
+
+```powershell
+# Genera CSV con columnas originales + 45 FE features + predicciones
+python scripts\prediccion_lote.py --input data/muestra_test.csv --output data/predicciones.csv --modelo v2
+
+# Sin columna impacto_fraude (opcional)
+python scripts\prediccion_lote.py --input data/muestra_test.csv --output data/predicciones.csv --modelo v2 --no-impacto
+```
+
+### 9.5 Separar predicciones en JSON
+
+```powershell
+# Paso 1: batch inference
+python scripts\prediccion_lote.py --input data/dataset_fraude_mejorado.csv --output data/predicciones_v2.csv --modelo v2
+
+# Paso 2: separar en dos JSON
+python scripts\separar_prediccion_json.py --input data/predicciones_v2.csv --output-dir data/
+```
+
+Esto genera:
+- `data/transacciones.json` — solo columnas originales
+- `data/predicciones.json` — id_transaccion + 45 features FE + predicciones
+
+### 9.6 Aplanar predicciones a formato compacto
+
+```powershell
+python scripts\aplanar_predicciones.py --input data/predicciones.json --output data/predicciones_aplanadas.json
+```
+
+Reduce cada registro a 10 campos clave: `id_transaccion`, `is_fraud`, `prob_fraud`, `impacto_fraude`, `es_transfronteriza`, `ratio_imp_limite`, `intensidad_tx`, `severidad_tx`, `flujo_neto_30d`, `mensaje`.
+
+### 9.7 Evaluación por rondas (simular producción y drift)
+
+```powershell
+# Baseline — distribución estable
+python scripts\evaluacion_rondas.py --modelo v2 --rondas 50 --drift baseline
+
+# Drift suave — cambio gradual en features (rondas 20-40)
+python scripts\evaluacion_rondas.py --modelo v2 --rondas 50 --drift suave
+
+# Drift abrupto — cambio brusco en ronda 30
+python scripts\evaluacion_rondas.py --modelo v2 --rondas 50 --drift abrupto
+
+# Concept drift — nuevo patrón de fraude no visto (ronda 25)
+python scripts\evaluacion_rondas.py --modelo v2 --rondas 50 --drift concepto
+
+# Guardar resultados a CSV
+python scripts\evaluacion_rondas.py --modelo v2 --rondas 100 --drift suave --output data/metricas_rondas.csv
+```
+
+### 9.8 Carga autónoma del modelo (solo 2 archivos)
+
+```python
+import sys, joblib
+from pathlib import Path
+
+pkl_dir = Path('scripts/saved_models')
+sys.path.insert(0, str(pkl_dir))
+from feature_engineering import FeatureEngineer
+
+obj = joblib.load(str(pkl_dir / 'modelo_08_v2.pkl'))
+
+# Pipeline completo disponible:
+# obj['fe'], obj['scaler'], obj['imputer'],
+# obj['lgb_model'], obj['xgb_model'],
+# obj['best_w'], obj['best_t'], obj['num_feats']
+```
+
+### 9.9 Explorar resultados
+
+```powershell
 # Pipeline completo (interactivo)
-jupyter notebook model\09_pipeline_completo.ipynb
+jupyter notebook notebooks\09_pipeline_completo.ipynb
+
 # Feature engineering deep dive
-jupyter notebook model\03_feature_engineering_deep_dive.ipynb
+jupyter notebook docs\03_feature_engineering_deep_dive.ipynb
+
 # Model selection deep dive
-jupyter notebook model\06_model_selection_deep_dive.ipynb
+jupyter notebook docs\06_model_selection_deep_dive.ipynb
+
+# Análisis de residuos
+notepad docs\residuos_y_evaluacion.md
 ```
 
 ### Packages principales:

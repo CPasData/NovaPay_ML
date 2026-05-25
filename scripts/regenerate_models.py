@@ -17,14 +17,21 @@ base = Path(__file__).resolve().parent
 sys.path.append(str(base))
 from feature_engineering import FeatureEngineer
 
+# Leer el source completo para embeberlo en el .pkl
+FE_SOURCE = (base / 'feature_engineering.py').read_text(encoding='utf-8')
+
 models_dir = base / 'saved_models'
 models_dir.mkdir(exist_ok=True)
 
+# Copiar feature_engineering.py junto a los .pkl para carga autónoma
+import shutil
+shutil.copy2(str(base / 'feature_engineering.py'), str(models_dir / 'feature_engineering.py'))
+
 np.random.seed(42)
 
-# ============================================================
+
 # CONFIG
-# ============================================================
+
 datasets = [
     {
         'name': 'v1',
@@ -199,6 +206,7 @@ def train_pipeline(cfg):
 
     # 11. Build artifact
     artifact = {
+        '_fe_source': FE_SOURCE,
         'fe': fe,
         'scaler': scaler,
         'imputer': imputer,
@@ -239,9 +247,9 @@ def train_pipeline(cfg):
     print(f'  Guardado: {path}')
     return artifact
 
-# ============================================================
+
 # TRAIN BOTH
-# ============================================================
+
 print('=== REGENERACI\u00d3N DE MODELOS ===')
 print(f'Feature Engineering: v3 (67 features)')
 print(f'Pipeline: FE -> Scale -> KNNImputer -> LGB/XGB -> Ensemble -> F2 thr')

@@ -4,3 +4,5 @@
 uv venv
 source .venv/Scripts/activate
 uv pip install -r requirements.txt
+
+docker compose up -d

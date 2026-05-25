@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novapay-ml"
+version = "0.1.0"
+description = "Proyecto de detección de fraude"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas",
+  "numpy",
+  "scikit-learn"
+]
