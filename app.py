@@ -7,11 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 import uvicorn
 import joblib
-import numpy as np
 import pandas as pd
-from datetime import datetime
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 # ============================================================
 # INICIALIZACIÓN
@@ -19,7 +15,7 @@ from psycopg2.extras import RealDictCursor
 app = FastAPI(
     title="NovaPay ML API",
     description="API de detección de fraude para NovaPay",
-    version="3.0.0"
+    version="4.1.0"
 )
 
 # ============================================================
@@ -43,20 +39,6 @@ print(f"Modelo cargado correctamente")
 print(f"Threshold: {best_t:.4f} | Peso LGB: {best_w} | Peso XGB: {1-best_w}")
 
 # ============================================================
-# CONFIGURACIÓN BASE DE DATOS
-# ============================================================
-DB_CONFIG = {
-    "host"    : "localhost",
-    "port"    : 5432,
-    "database": "novapay",
-    "user"    : "postgres",
-    "password": "123456"  # cambia esto por tu contraseña
-}
-
-def get_db_connection():
-    return psycopg2.connect(**DB_CONFIG)
-
-# ============================================================
 # MODELO DE DATOS — lo que recibe la API
 # Usa nombres largos del CSV
 # ============================================================
@@ -64,6 +46,8 @@ class Transaccion(BaseModel):
 
     # Identificación
     id_transaccion: str = Field(..., json_schema_extra={"example": "059638c5-40f"})
+    #Field()--> añade información extra
+    #...  --> el campo no debe faltar
 
     # Datos del cliente
     id_cliente:                     str   = Field(..., json_schema_extra={"example": "3ddebd45-ccd"})
@@ -205,84 +189,6 @@ def predecir(transaccion: Transaccion) -> Prediccion:
     )
 
 
-def guardar_en_bd(transaccion: Transaccion, prediccion: Prediccion):
-    """Guarda la transacción con su predicción en PostgreSQL."""
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute("""
-            INSERT INTO transacciones (
-                id_transaccion, id_cliente,
-                id_cuenta, cuenta_origen, estado_cuenta,
-                saldo_actual, saldo_avg_30d,
-                vol_entrante_30d, vol_saliente_30d,
-                num_trans_recib_7d, num_trans_env_7d,
-                id_tarjeta, estado_tarjeta,
-                fecha_creacion_tarjeta, tiempo_activo_tarjeta,
-                limite_impot_tx, veces_superar_limite_7d,
-                tipo_transaccion, fecha_trans,
-                is_night, is_weekend,
-                tiempo_desde_ult_trans, num_trans_ult_hora,
-                importe_transaccion, metod_auten,
-                num_veces_pin, ident_disp,
-                dispositivo_reconocido,
-                operacion_pais, operacion_region,
-                dir_ip_origen, geolocalizacion,
-                cuenta_destino, destino_alto_riesgo,
-                is_fraud, prob_fraud, impacto_fraude,
-                es_transfronteriza, ratio_imp_limite,
-                intensidad_tx, severidad_tx, flujo_neto_30d,
-                estado_revision
-            ) VALUES (
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                %s,%s,%s
-            )
-            ON CONFLICT (id_transaccion) DO NOTHING
-        """, (
-            transaccion.id_transaccion, transaccion.id_cliente,
-            transaccion.id_cuenta, transaccion.cuenta_origen,
-            transaccion.estado_cuenta, transaccion.saldo_actual,
-            transaccion.saldo_medio_30_dias,
-            transaccion.volumen_entrante_30_dias,
-            transaccion.volumen_saliente_30_dias,
-            transaccion.numero_transferencias_recibidas_7_dias,
-            transaccion.numero_transferencias_enviadas_7_dias,
-            transaccion.id_tarjeta, transaccion.estado_tarjeta,
-            transaccion.fecha_creacion_tarjeta,
-            transaccion.antiguedad_tarjeta_dias,
-            transaccion.limite_importe_transacciones,
-            transaccion.veces_superar_limite_7_dias,
-            transaccion.tipo_transaccion, transaccion.fecha_hora,
-            transaccion.is_night, transaccion.is_weekend,
-            transaccion.tiempo_desde_ultima_transaccion,
-            transaccion.numero_transacciones_ultima_hora,
-            transaccion.importe_transaccion,
-            transaccion.metodo_autenticacion,
-            transaccion.numero_pin_disponibles,
-            transaccion.identificador_dispositivo_fingerprint,
-            transaccion.dispositivo_reconocido,
-            transaccion.operacion_pais, transaccion.operacion_region,
-            transaccion.direccion_ip_origen,
-            transaccion.geolocalizacion, transaccion.cuenta_destino,
-            transaccion.destino_alto_riesgo,
-            prediccion.is_fraud, prediccion.prob_fraud,
-            prediccion.impacto_fraude,
-            prediccion.es_transfronteriza,
-            prediccion.ratio_imp_limite,
-            prediccion.intensidad_tx, prediccion.severidad_tx,
-            prediccion.flujo_neto_30d,
-            'pendiente' if prediccion.is_fraud == 1 else 'legitima'
-        ))
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print(f"Error al guardar en BD: {e}")
-
-
 # ============================================================
 # ENDPOINTS
 # ============================================================
@@ -295,11 +201,11 @@ def health():
     """
     return {
         "status"   : "ok",
-        "version"  : "3.0.0",
+        "version"  : "4.0.0",
         "modelo"   : "modelo_07_v1",
-        "ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
-        "threshold": round(best_t, 4),
-        "metadata" : modelo.get('metadata', {})
+        #"ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
+        #"threshold": round(best_t, 4),
+        #"metadata" : modelo.get('metadata', {})
     }
 
 
@@ -312,7 +218,7 @@ def predict(transaccion: Transaccion):
     """
     try:
         prediccion = predecir(transaccion)
-        guardar_en_bd(transaccion, prediccion)
+        #guardar_en_bd(transaccion, prediccion)
         return prediccion
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -329,7 +235,7 @@ def predict_batch(transacciones: List[Transaccion]):
         resultados = []
         for transaccion in transacciones:
             prediccion = predecir(transaccion)
-            guardar_en_bd(transaccion, prediccion)
+            #guardar_en_bd(transaccion, prediccion)
             resultados.append(prediccion)
 
         return {
@@ -340,50 +246,6 @@ def predict_batch(transacciones: List[Transaccion]):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/metrics", tags=["Modelo ML"])
-def metrics():
-    """
-    Devuelve metricas del modelo calculadas desde la BD.
-    Este endpoint no espera datos, solo se llama.
-    """
-    try:
-        conn = get_db_connection()
-        cur  = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT
-                COUNT(*)                                        AS total_predicciones,
-                SUM(CASE WHEN is_fraud = 1 THEN 1 ELSE 0 END)  AS fraudes_detectados,
-                SUM(CASE WHEN is_fraud = 0 THEN 1 ELSE 0 END)  AS legitimas,
-                ROUND(AVG(prob_fraud)::numeric, 4)              AS prob_fraud_media,
-                SUM(CASE WHEN estado_revision = 'pendiente'
-                     THEN 1 ELSE 0 END)                        AS pendientes_revision,
-                SUM(CASE WHEN estado_revision = 'confirmado_fraude'
-                     THEN 1 ELSE 0 END)                        AS confirmados_fraude,
-                SUM(CASE WHEN estado_revision = 'falso_positivo'
-                     THEN 1 ELSE 0 END)                        AS falsos_positivos
-            FROM transacciones
-            WHERE is_fraud IS NOT NULL
-        """)
-        row     = cur.fetchone()
-        cur.close()
-        conn.close()
-        total   = row['total_predicciones'] or 0
-        fraudes = row['fraudes_detectados'] or 0
-        return {
-            "total_predicciones" : total,
-            "fraudes_detectados" : fraudes,
-            "legitimas"          : row['legitimas'] or 0,
-            "tasa_deteccion"     : round(fraudes / total, 4) if total > 0 else 0,
-            "prob_fraud_media"   : float(row['prob_fraud_media'] or 0),
-            "pendientes_revision": row['pendientes_revision'] or 0,
-            "confirmados_fraude" : row['confirmados_fraude'] or 0,
-            "falsos_positivos"   : row['falsos_positivos'] or 0,
-        }
-    except Exception as e:
-        return {"error": str(e), "nota": "Verifica la conexion a la BD"}
-
 
 # ============================================================
 # ARRANCAR LA API
