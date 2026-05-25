@@ -22,13 +22,17 @@ import numpy as np
 from pathlib import Path
 
 # ============================================================
+# 0. Setup: el .py standalone debe estar accesible
+# ============================================================
+# regenerate_models.py copia feature_engineering.py a saved_models/
+pkl_dir = Path(__file__).resolve().parent / 'saved_models'
+sys.path.insert(0, str(pkl_dir))
+from feature_engineering import FeatureEngineer
+
+# ============================================================
 # 1. Cargar modelo
 # ============================================================
-# Ejecutar desde la raíz del proyecto
-sys.path.append(str(Path.cwd()))
-from scripts.feature_engineering import FeatureEngineer
-
-model_path = Path.cwd() / 'scripts' / 'saved_models' / 'modelo_08_v2.pkl'
+model_path = pkl_dir / 'modelo_08_v2.pkl'
 obj = joblib.load(model_path)
 
 fe = obj['fe']
@@ -45,15 +49,15 @@ print(f'  Ensemble: w(LGB)={best_w:.3f} + w(XGB)={1-best_w:.3f}')
 print(f'  Threshold F2: {best_t:.4f}')
 print(f'  Features: {len(num_feats)} numéricas')
 
-# ============================================================
+
 # 2. Cargar datos nuevos (mismas columnas que entrenamiento)
-# ============================================================
+
 df = pd.read_csv(Path.cwd() / 'data' / 'dataset_fraude_mejorado.csv')
 y_true = df['IS_FRAUD'].values
 
-# ============================================================
+
 # 3. Pipeline de inferencia
-# ============================================================
+
 X = fe.transform(df)
 X = X.drop(columns=['IS_FRAUD'], errors='ignore')
 
@@ -61,17 +65,17 @@ X_s = X.copy()
 X_s[num_feats] = scaler.transform(X[num_feats])
 X_s[num_feats] = imputer.transform(X_s[num_feats])
 
-# ============================================================
+
 # 4. Ensemble + Threshold
-# ============================================================
+
 lgb_prob = lgb_model.predict_proba(X_s)[:, 1]
 xgb_prob = xgb_model.predict_proba(X_s)[:, 1]
 y_prob = best_w * lgb_prob + (1 - best_w) * xgb_prob
 y_pred = (y_prob >= best_t).astype(int)
 
-# ============================================================
+
 # 5. Evaluación
-# ============================================================
+
 from sklearn.metrics import classification_report, roc_auc_score, average_precision_score
 print()
 print(classification_report(y_true, y_pred, digits=4))
