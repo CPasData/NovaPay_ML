@@ -27,7 +27,7 @@ COPY app.py .
 
 # Copiar modelo final
 COPY model/modelo_07_v1.pkl ./model/modelo_07_v1.pkl
-COPY feature_engineering.py .
+COPY scripts/feature_engineering.py .
 
 # Variables de entorno
 ENV PYTHONDONTWRITEBYTECODE=1 \
