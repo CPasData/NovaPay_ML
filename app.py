@@ -7,9 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 import uvicorn
 import joblib
-import numpy as np
 import pandas as pd
-from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -19,7 +17,7 @@ from psycopg2.extras import RealDictCursor
 app = FastAPI(
     title="NovaPay ML API",
     description="API de detección de fraude para NovaPay",
-    version="3.0.0"
+    version="4.0.0"
 )
 
 # ============================================================
@@ -64,6 +62,8 @@ class Transaccion(BaseModel):
 
     # Identificación
     id_transaccion: str = Field(..., json_schema_extra={"example": "059638c5-40f"})
+    #Field()--> añade información extra
+    #...  --> el campo no debe faltar
 
     # Datos del cliente
     id_cliente:                     str   = Field(..., json_schema_extra={"example": "3ddebd45-ccd"})
@@ -206,7 +206,11 @@ def predecir(transaccion: Transaccion) -> Prediccion:
 
 
 def guardar_en_bd(transaccion: Transaccion, prediccion: Prediccion):
-    """Guarda la transacción con su predicción en PostgreSQL."""
+    """
+    Guarda la transacción con su predicción en PostgreSQL.
+    Los nombres de columnas coinciden exactamente con la BD
+    y con los campos del CSV — sin mapeos necesarios.
+    """
     try:
         conn = get_db_connection()
         cur  = conn.cursor()
@@ -214,20 +218,23 @@ def guardar_en_bd(transaccion: Transaccion, prediccion: Prediccion):
             INSERT INTO transacciones (
                 id_transaccion, id_cliente,
                 id_cuenta, cuenta_origen, estado_cuenta,
-                saldo_actual, saldo_avg_30d,
-                vol_entrante_30d, vol_saliente_30d,
-                num_trans_recib_7d, num_trans_env_7d,
+                saldo_actual, saldo_medio_30_dias,
+                volumen_entrante_30_dias, volumen_saliente_30_dias,
+                numero_transferencias_recibidas_7_dias,
+                numero_transferencias_enviadas_7_dias,
                 id_tarjeta, estado_tarjeta,
-                fecha_creacion_tarjeta, tiempo_activo_tarjeta,
-                limite_impot_tx, veces_superar_limite_7d,
-                tipo_transaccion, fecha_trans,
+                fecha_creacion_tarjeta, antiguedad_tarjeta_dias,
+                limite_importe_transacciones, veces_superar_limite_7_dias,
+                tipo_transaccion, fecha_hora,
                 is_night, is_weekend,
-                tiempo_desde_ult_trans, num_trans_ult_hora,
-                importe_transaccion, metod_auten,
-                num_veces_pin, ident_disp,
+                tiempo_desde_ultima_transaccion,
+                numero_transacciones_ultima_hora,
+                importe_transaccion, metodo_autenticacion,
+                numero_pin_disponibles,
+                identificador_dispositivo_fingerprint,
                 dispositivo_reconocido,
                 operacion_pais, operacion_region,
-                dir_ip_origen, geolocalizacion,
+                direccion_ip_origen, geolocalizacion,
                 cuenta_destino, destino_alto_riesgo,
                 is_fraud, prob_fraud, impacto_fraude,
                 es_transfronteriza, ratio_imp_limite,
@@ -295,11 +302,11 @@ def health():
     """
     return {
         "status"   : "ok",
-        "version"  : "3.0.0",
+        "version"  : "4.0.0",
         "modelo"   : "modelo_07_v1",
-        "ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
-        "threshold": round(best_t, 4),
-        "metadata" : modelo.get('metadata', {})
+        #"ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
+        #"threshold": round(best_t, 4),
+        #"metadata" : modelo.get('metadata', {})
     }
 
 
@@ -345,7 +352,7 @@ def predict_batch(transacciones: List[Transaccion]):
 @app.get("/metrics", tags=["Modelo ML"])
 def metrics():
     """
-    Devuelve metricas del modelo calculadas desde la BD.
+    Devuelve metricas del modelo calculadas en tiempo real desde la BD.
     Este endpoint no espera datos, solo se llama.
     """
     try:
