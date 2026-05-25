@@ -1,44 +1,43 @@
-# =============================================================
+# ============================================================
 # Dockerfile — NovaPay ML API
-# =============================================================
+# ============================================================
 
-# Builder
-FROM python:3.11-slim AS builder
-
-WORKDIR /app
-
-# copiamos requirements-doc.txt (solo las librerias necesarias para lanzar la API)
-COPY requirements-doc.txt .
-
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install -r requirements-doc.txt
-
-
-# Runtime
 FROM python:3.11-slim
 
+# Directorio de trabajo
 WORKDIR /app
 
-# Copiamos las dependencias ya instaladas desde el builder
-COPY --from=builder /install /usr/local
-
-# Copiamos el código de la aplicación
-COPY app.py .
-
-# Copiar modelo final
-COPY model/modelo_07_v1.pkl ./model/modelo_07_v1.pkl
-COPY scripts/feature_engineering.py .
-
 # Variables de entorno
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=8000
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Puerto que expone el contenedor
-EXPOSE $PORT
+# Dependencias del sistema necesarias para ML
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Comando de arranque
-# - host 0.0.0.0  → acepta conexiones externas (obligatorio en contenedor)
-# - workers 2     → 2 procesos paralelos (ajustar según plan de Render)
-# - NO usamos reload=True en producción (solo en desarrollo)
-CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port $PORT --workers 2"]
+# Copiamos requirements
+COPY requirements-doc.txt .
+
+# Instalamos dependencias Python
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements-doc.txt
+
+# Copiamos el proyecto
+COPY app.py .
+COPY feature_engineering.py .
+
+# Carpeta modelo
+COPY model ./model
+
+# Carpeta scripts
+COPY scripts ./scripts
+
+# Puerto FastAPI
+EXPOSE 8000
+
+# Arranque
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
