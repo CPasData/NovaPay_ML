@@ -14,6 +14,9 @@ import pandas as pd
 
 PRED_COLS = ['probabilidad_fraude', 'prediccion_fraude', 'impacto_fraude']
 
+# Columnas de etiqueta que NO deben aparecer en transacciones.json
+EXCLUIR_RAW = ['IS_FRAUD', 'IMPACTO_FRAUDE']
+
 ORIGINAL_COLS = [
     'id_cliente', 'tipo_cliente', 'edad_cliente',
     'customer_country', 'customer_region', 'tenure',
@@ -55,9 +58,9 @@ def main():
     # Identificar grupos de columnas
     cols_disponibles = set(df.columns)
 
-    raw_cols = [c for c in ORIGINAL_COLS if c in cols_disponibles]
+    raw_cols = [c for c in ORIGINAL_COLS if c in cols_disponibles and c not in EXCLUIR_RAW]
     pred_cols = [c for c in PRED_COLS if c in cols_disponibles]
-    fe_cols = [c for c in df.columns if c not in raw_cols and c not in pred_cols]
+    fe_cols = [c for c in df.columns if c not in raw_cols and c not in pred_cols and c not in EXCLUIR_RAW]
 
     # Asegurar que id_transaccion esta en predicciones
     if 'id_transaccion' in cols_disponibles and 'id_transaccion' not in fe_cols:
