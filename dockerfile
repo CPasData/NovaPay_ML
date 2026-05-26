@@ -20,15 +20,10 @@ COPY requirements-doc.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements-doc.txt
 
-# Copiamos el proyecto
+# Copiamos solo lo necesario para runtime
 COPY app.py .
 COPY feature_engineering.py .
-
-# Carpeta modelo
 COPY model ./model
-
-# Carpeta scripts
-COPY scripts ./scripts
 
 # Puerto FastAPI
 EXPOSE 8000
