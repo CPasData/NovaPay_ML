@@ -21,22 +21,20 @@ app = FastAPI(
 # ============================================================
 # CARGA DEL MODELO AL ARRANCAR
 # Un solo pkl con todo dentro:
-# fe, scaler, imputer, lgb_model, xgb_model, best_w, best_t
+# fe, scaler, imputer, xgb_model, best_t
 # ============================================================
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", "modelo_07_v1.pkl")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", "modelo_08_v2.pkl")
 modelo     = joblib.load(MODEL_PATH)
 
 fe        = modelo['fe']         # FeatureEngineer
 scaler    = modelo['scaler']     # StandardScaler
 imputer   = modelo['imputer']    # KNNImputer
-lgb       = modelo['lgb_model']  # LightGBM
 xgb_m     = modelo['xgb_model']  # XGBoost
-best_w    = modelo['best_w']     # peso del ensemble (LGB=30%, XGB=70%)
-best_t    = modelo['best_t']     # threshold de decisión (0.314)
+best_t    = modelo['best_t']     # threshold de decisión
 num_feats = modelo['num_feats']  # features numéricas para scaler e imputer
 
 print(f"Modelo cargado correctamente")
-print(f"Threshold: {best_t:.4f} | Peso LGB: {best_w} | Peso XGB: {1-best_w}")
+print(f"Threshold: {best_t:.4f} | Modelo: XGBoost")
 
 # ============================================================
 # MODELO DE DATOS — lo que recibe la API
@@ -82,7 +80,7 @@ class Transaccion(BaseModel):
 
     # Datos de transacción
     tipo_transaccion:               str   = Field(..., json_schema_extra={"example": "tarjeta"})
-    fecha_hora:                     str   = Field(..., json_schema_extra={"example": "2026-05-23 14:30:00"})
+    fecha_hora:                     str   = Field(..., json_schema_extra={"example": "2026-05-23T14:30:00"})
     is_night:                       int   = Field(..., json_schema_extra={"example": 0})
     is_weekend:                     int   = Field(..., json_schema_extra={"example": 0})
     tiempo_desde_ultima_transaccion:    int   = Field(..., json_schema_extra={"example": 3600})
@@ -136,8 +134,8 @@ def calcular_impacto(is_fraud: int, importe: float) -> int:
 # 2. Extraer campos calculados ANTES de imputer y scaler
 # 3. Imputer → imputa nulos en las 67 features
 # 4. Scaler  → escala las features numéricas
-# 5. Ensemble LGB + XGB → predice probabilidad
-# 6. Threshold 0.314 → decides is_fraud
+# 5. XGBoost → predice probabilidad
+# 6. Threshold → decide is_fraud
 # ============================================================
 def predecir(transaccion: Transaccion) -> Prediccion:
     datos  = transaccion.model_dump()
@@ -159,10 +157,8 @@ def predecir(transaccion: Transaccion) -> Prediccion:
     # PASO 4 — Scaler
     X[num_feats] = scaler.transform(X[num_feats])
 
-    # PASO 5 — Ensemble predict
-    prob_lgb = lgb.predict_proba(X)[:, 1]
-    prob_xgb = xgb_m.predict_proba(X)[:, 1]
-    prob     = best_w * prob_lgb + (1 - best_w) * prob_xgb
+    # PASO 5 — XGBoost predict
+    prob = xgb_m.predict_proba(X)[:, 1]
 
     # PASO 6 — Threshold
     is_fraud       = int((prob[0] >= best_t))
@@ -203,7 +199,7 @@ def health():
         "status"   : "ok",
         "version"  : "4.0.0",
         "modelo"   : "modelo_07_v1",
-        #"ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
+        #"modelo"   : "XGBoost",
         #"threshold": round(best_t, 4),
         #"metadata" : modelo.get('metadata', {})
     }

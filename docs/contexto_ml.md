@@ -13,11 +13,11 @@ usando datos sintéticos generados con Faker. El proyecto incluye:
 
 - Generación de datos sintéticos transaccionales multi-nivel (clientes, cuentas, tarjetas, transacciones)
 - Feature engineering con codificación target, frecuencias, detección de ráfagas y desviaciones de perfil
-- Pipeline completo: FE v3 → KNNImputer → StandardScaler → LightGBM + XGBoost ensemble → threshold F2
+- Pipeline completo: FE v3 → KNNImputer → StandardScaler → XGBoost → threshold F2
 - Modelos guardados (`.pkl`) conteniendo pipeline completo para inferencia
 - Documentación de resultados
 
-**Entorno**: Windows, Python 3.14, scikit-learn 1.8.0, LightGBM 4.6.0, XGBoost 3.2.0
+**Entorno**: Windows, Python 3.14, scikit-learn 1.8.0, XGBoost 3.2.0
 
 ---
 
@@ -36,7 +36,7 @@ C:\Dev\NovaPay_ML\
 │   ├── __init__.py
 │   ├── saved_models/
 │   │   ├── feature_engineering.py   # Copia autónoma para carga sin scripts/ en sys.path
-│   │   ├── modelo_07_v1.pkl         # Pipeline FE v3 + Scaler + Imputer + LGB + XGB + w + thr
+│   │   ├── modelo_07_v1.pkl         # Pipeline FE v3 + Scaler + Imputer + XGBoost + thr
 │   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2 (mejorado)
 │   └── synthetic_data/
 │       ├── generar_dataset_fraude.py          # Generador v1 (señal débil)
@@ -144,6 +144,10 @@ Cuando `IS_FRAUD=1`, se asigna impacto según importe:
 - `IS_FRAUD=0` → `IMPACTO_FRAUDE=0` (no fraude)
 
 **⚠️ CRÍTICO — Data leakage reparado**: Originalmente los notebooks NO eliminaban la columna objetivo opuesta. Se añadió `drop(columns=other_target)` justo después de cargar los datos en todos los notebooks.
+
+### 3.5 Formato ISO en fechas
+
+Todas las fechas (`fecha_hora`, `fecha_creacion_tarjeta`) se generan y almacenan en formato ISO 8601 sin timezone: `YYYY-MM-DDTHH:MM:SS`. `pd.to_datetime()` lo parsea sin problema en feature engineering.
 
 ---
 
@@ -260,18 +264,16 @@ Cada `.pkl` contiene el **pipeline completo** en un solo archivo:
     'fe':        FeatureEngineer v3 (fitted),
     'scaler':    StandardScaler (fitted, 66 features numéricas),
     'imputer':   KNNImputer (fitted, n_neighbors=5),
-    'lgb_model': LightGBM entrenado (67 features, 200 trees),
     'xgb_model': XGBoost entrenado (67 features, 200 trees),
-    'best_w':    peso óptimo del ensemble (0.52 v2 / 0.30 v1),
-    'best_t':    threshold F2 (0.3223 v2 / 0.3144 v1),
+    'best_t':    threshold F2,
     'best_prec': precisión del threshold en validación,
     'best_rec':  recall del threshold en validación,
     'num_feats': lista de 66 columnas numéricas,
     'metadata': {
         'dataset', 'label', 'fecha', 'n_features', 'n_train/val/test',
-        'fraud_rate', 'lightgbm_val_prauc', 'xgboost_val_prauc',
-        'ensemble_val_prauc', 'ensemble_test_prauc/auc/precision/recall/f1',
-        'best_w', 'f2_threshold', 'calibration_used'
+        'fraud_rate', 'model', 'val_prauc', 'val_auc',
+        'test_prauc/auc/precision/recall/f1',
+        'f2_threshold', 'calibration_used'
     }
 }
 ```
@@ -282,6 +284,8 @@ Cada `.pkl` contiene el **pipeline completo** en un solo archivo:
 |---------|---------|:-----------:|:-----------:|:---------:|:------:|:--:|
 | `saved_models/modelo_07_v1.pkl` | v1 (original) | 0.3236 | 0.7135 | 19.7% | 87.2% | 0.3215 |
 | `saved_models/modelo_08_v2.pkl` | v2 (mejorado) | 0.9640 | 0.9874 | 77.2% | 95.3% | 0.8529 |
+
+> Ambos modelos usan **XGBoost únicamente** (sin ensemble). Las métricas pueden variar ligeramente respecto a la versión anterior con ensemble LGB+XGB.
 
 ### 6.3 Carga e inferencia
 
@@ -306,9 +310,7 @@ X = X.drop(columns=['IS_FRAUD'], errors='ignore')
 X[obj['num_feats']] = obj['scaler'].transform(X[obj['num_feats']])
 X[obj['num_feats']] = obj['imputer'].transform(X[obj['num_feats']])
 
-p_lgb = obj['lgb_model'].predict_proba(X)[:, 1]
-p_xgb = obj['xgb_model'].predict_proba(X)[:, 1]
-y_prob = obj['best_w'] * p_lgb + (1 - obj['best_w']) * p_xgb
+y_prob = obj['xgb_model'].predict_proba(X)[:, 1]
 y_pred = (y_prob >= obj['best_t']).astype(int)
 ```
 
@@ -321,7 +323,7 @@ cd C:\Dev\NovaPay_ML
 python scripts\regenerate_models.py
 ```
 
-El script entrena ambos modelos (v1 y v2) con pipeline completo (FE v3 → KNNImputer → Scaler → LGB + XGB → ensemble → F2 thr) y los guarda.
+El script entrena ambos modelos (v1 y v2) con pipeline completo (FE v3 → KNNImputer → Scaler → XGBoost → F2 thr) y los guarda.
 
 ---
 
@@ -351,20 +353,25 @@ F2 (beta=2) pondera recall 2× más que precisión. Para v2, precision ≥ 60% e
 Se evalúa pero se salta si diferencia PR-AUC < 0.01 (nunca mejora significativamente).
 sklearn 1.8 eliminó `cv='prefit'`, se usa `cv=3`.
 
-### 7.5 Data leakage cruzado
+### 7.5 Modelo único: XGBoost
+
+Se eliminó LightGBM del pipeline. XGBoost por sí solo alcanza PR-AUC ~0.96 en v2, y la mejora del ensemble con LGB era marginal (~0.005 PR-AUC). Beneficios: menos dependencias (no instalar `lightgbm` + `libgomp`), .pkl más pequeño (~40% menos), carga más rápida, menos complejidad en el Docker.
+
+### 7.6 Data leakage cruzado
 
 `IMPACTO_FRAUDE` y `IS_FRAUD` correlacionados por construcción. Solución:
 `df.drop(columns=[other_target])` al cargar datos.
 
-### 7.6 `estado_cuenta` y `estado_tarjeta` excluidas
+### 7.7 `estado_cuenta` y `estado_tarjeta` excluidas
 
 Eliminadas de features por poca señal discriminativa y riesgo de leakage (estado de cuenta
 puede depender del fraude posterior).
 
-### 7.7 Solo ensemble LGB + XGB
+### 7.8 Solo XGBoost
 
-De 8 modelos iniciales, se redujo a los 2 más competitivos para datos tabulares con
-clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo individual.
+De 8 modelos iniciales, se redujo primero a LGB + XGB ensemble, y posteriormente a solo
+XGBoost al comprobar que la ganancia del ensemble era marginal (~0.005 PR-AUC).
+XGBoost ofrece el mejor equilibrio rendimiento/simplicidad para datos tabulares con clase desbalanceada.
 
 ---
 
@@ -389,6 +396,8 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 - `03_feature_engineering_deep_dive.ipynb` actualizado con sección v3
 - `06_model_selection_deep_dive.ipynb` actualizado con sección ensemble
 - Deep-dive notebooks ejecutándose sin errores
+- Pipeline simplificado: solo XGBoost (sin LightGBM)
+- Fechas en formato ISO 8601 (`YYYY-MM-DDTHH:MM:SS`)
 
 ### Pendiente / A decidir (próximas iteraciones):
 - Refinamiento continuo del modelo: hiperparámetros, nuevas features (v4), otros algoritmos
@@ -418,7 +427,7 @@ cd C:\Dev\NovaPay_ML
 python scripts\regenerate_models.py
 ```
 
-Entrena v1 y v2 desde cero con pipeline completo (FE v3 → KNNImputer → Scaler → LGB + XGB → ensemble → F2 thr) y copia `feature_engineering.py` a `saved_models/` para carga autónoma.
+Entrena v1 y v2 desde cero con pipeline completo (FE v3 → KNNImputer → Scaler → XGBoost → F2 thr) y copia `feature_engineering.py` a `saved_models/` para carga autónoma.
 
 ### 9.2 Generar datos sintéticos
 
@@ -511,8 +520,7 @@ obj = joblib.load(str(pkl_dir / 'modelo_08_v2.pkl'))
 
 # Pipeline completo disponible:
 # obj['fe'], obj['scaler'], obj['imputer'],
-# obj['lgb_model'], obj['xgb_model'],
-# obj['best_w'], obj['best_t'], obj['num_feats']
+# obj['xgb_model'], obj['best_t'], obj['num_feats']
 ```
 
 ### 9.9 Explorar resultados
@@ -532,7 +540,7 @@ notepad docs\residuos_y_evaluacion.md
 ```
 
 ### Packages principales:
-- Python 3.14, scikit-learn 1.8.0, lightgbm 4.6.0, xgboost 3.2.0
+- Python 3.14, scikit-learn 1.8.0, xgboost 3.2.0
 - pandas 2.3.3, numpy 2.4.3, joblib 1.5.3
 - Faker 40.15.0, matplotlib 3.10.8, seaborn 0.13.2, plotly 6.6.0
 

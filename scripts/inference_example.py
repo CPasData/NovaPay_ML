@@ -8,9 +8,7 @@ Los .pkl contienen:
     fe        -> FeatureEngineer (fitted v3)
     scaler    -> StandardScaler (fitted)
     imputer   -> KNNImputer (fitted, n_neighbors=5)
-    lgb_model -> LightGBM entrenado
     xgb_model -> XGBoost entrenado
-    best_w    -> peso del ensemble (LightGBM)
     best_t    -> threshold F2
     num_feats -> lista de columnas numéricas
     metadata  -> métricas de entrenamiento
@@ -38,14 +36,12 @@ obj = joblib.load(model_path)
 fe = obj['fe']
 scaler = obj['scaler']
 imputer = obj['imputer']
-lgb_model = obj['lgb_model']
 xgb_model = obj['xgb_model']
-best_w = obj['best_w']
 best_t = obj['best_t']
 num_feats = obj['num_feats']
 
 print(f'Modelo: {obj["metadata"]["label"]}')
-print(f'  Ensemble: w(LGB)={best_w:.3f} + w(XGB)={1-best_w:.3f}')
+print(f'  Modelo: XGBoost')
 print(f'  Threshold F2: {best_t:.4f}')
 print(f'  Features: {len(num_feats)} numéricas')
 
@@ -66,11 +62,9 @@ X_s[num_feats] = scaler.transform(X[num_feats])
 X_s[num_feats] = imputer.transform(X_s[num_feats])
 
 
-# 4. Ensemble + Threshold
+# 4. XGBoost + Threshold
 
-lgb_prob = lgb_model.predict_proba(X_s)[:, 1]
-xgb_prob = xgb_model.predict_proba(X_s)[:, 1]
-y_prob = best_w * lgb_prob + (1 - best_w) * xgb_prob
+y_prob = xgb_model.predict_proba(X_s)[:, 1]
 y_pred = (y_prob >= best_t).astype(int)
 
 

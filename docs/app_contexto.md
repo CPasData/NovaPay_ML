@@ -55,14 +55,12 @@ La API estará disponible en:
 El modelo está guardado en un único archivo `.pkl` que contiene todo:
 
 ```
-modelo_07_v1.pkl
+modelo_08_v2.pkl
 ├── fe         → FeatureEngineer (genera 67 features automáticamente)
 ├── imputer    → KNNImputer (rellena valores nulos)
 ├── scaler     → StandardScaler (escala los datos)
-├── lgb_model  → LightGBM
 ├── xgb_model  → XGBoost
-├── best_w     → peso ensemble (LGB 30% + XGB 70%)
-└── best_t     → threshold de decisión (0.3144)
+└── best_t     → threshold de decisión
 ```
 
 El pipeline de predicción sigue este orden:
@@ -78,9 +76,9 @@ Transacción entra a la API
         ↓
 4. StandardScaler  →  escala los números
         ↓
-5. LGB (30%) + XGB (70%)  →  calcula probabilidad de fraude
+5. XGBoost  →  calcula probabilidad de fraude
         ↓
-6. prob >= 0.3144  →  is_fraud = 1 (fraude detectado)
+6. prob >= threshold  →  is_fraud = 1 (fraude detectado)
 ```
 
 ---
@@ -297,7 +295,7 @@ Los datos se envían con los **mismos nombres que están en la BD**:
 | | limite_importe_transacciones | float | 2000.00 |
 | | veces_superar_limite_7_dias | int | 0 |
 | **Transacción** | tipo_transaccion | str | "tarjeta" |
-| | fecha_hora | str | "2026-05-23 14:30:00" |
+| | fecha_hora | str | "2026-05-23T14:30:00" |
 | | is_night | int | 0 |
 | | is_weekend | int | 0 |
 | | tiempo_desde_ultima_transaccion | int | 3600 |

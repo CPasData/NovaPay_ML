@@ -11,7 +11,6 @@ from sklearn.metrics import (roc_auc_score, average_precision_score,
     precision_score, recall_score, fbeta_score)
 from sklearn.calibration import CalibratedClassifierCV
 import xgboost as xgb
-import lightgbm as lgb
 
 base = Path(__file__).resolve().parent
 sys.path.append(str(base))
@@ -38,11 +37,6 @@ datasets = [
         'label': 'v1 (original)',
         'data_path': base.parent / 'data' / 'dataset_fraude.csv',
         'savename': 'modelo_07_v1.pkl',
-        'lgb_params': {
-            'learning_rate': 0.05, 'min_child_samples': 20,
-            'n_estimators': 200, 'num_leaves': 15,
-            'reg_lambda': 10, 'subsample': 0.8,
-        },
         'xgb_params': {
             'learning_rate': 0.05, 'max_depth': 3,
             'min_child_weight': 1, 'n_estimators': 200,
@@ -54,11 +48,6 @@ datasets = [
         'label': 'v2 (mejorado)',
         'data_path': base.parent / 'data' / 'dataset_fraude_mejorado.csv',
         'savename': 'modelo_08_v2.pkl',
-        'lgb_params': {
-            'learning_rate': 0.1, 'min_child_samples': 100,
-            'n_estimators': 200, 'num_leaves': 15,
-            'reg_lambda': 10, 'subsample': 0.8,
-        },
         'xgb_params': {
             'learning_rate': 0.05, 'max_depth': 3,
             'min_child_weight': 1, 'n_estimators': 200,
@@ -107,20 +96,8 @@ def train_pipeline(cfg):
     X_val_s[num_feats] = imputer.transform(X_val_s[num_feats])
     X_test_s[num_feats] = imputer.transform(X_test_s[num_feats])
 
-    # 5. LightGBM
+    # 5. XGBoost
     scale_pos = float((y_train == 0).sum() / (y_train == 1).sum())
-    lgb_params = cfg['lgb_params'].copy()
-    lgb_params['scale_pos_weight'] = scale_pos
-    lgb_model = lgb.LGBMClassifier(random_state=42, verbose=-1, **lgb_params)
-    lgb_model.fit(X_train_s, y_train)
-
-    yprob_lgb_val = lgb_model.predict_proba(X_val_s)[:, 1]
-    yprob_lgb_test = lgb_model.predict_proba(X_test_s)[:, 1]
-    prauc_lgb = average_precision_score(y_val, yprob_lgb_val)
-    auc_lgb = roc_auc_score(y_val, yprob_lgb_val)
-    print(f'  LightGBM Val: PR-AUC={prauc_lgb:.4f}  AUC-ROC={auc_lgb:.4f}')
-
-    # 6. XGBoost
     xgb_params = cfg['xgb_params'].copy()
     xgb_params['scale_pos_weight'] = scale_pos
     xgb_model = xgb.XGBClassifier(random_state=42, verbosity=0, eval_metric='logloss', **xgb_params)
@@ -132,44 +109,24 @@ def train_pipeline(cfg):
     auc_xgb = roc_auc_score(y_val, yprob_xgb_val)
     print(f'  XGBoost Val:   PR-AUC={prauc_xgb:.4f}  AUC-ROC={auc_xgb:.4f}')
 
-    # 7. Calibración (opcional)
-    cal_lgb = CalibratedClassifierCV(lgb_model, cv=3, method='sigmoid')
-    cal_lgb.fit(X_train_s, y_train)
+    # 6. Calibración (opcional)
     cal_xgb = CalibratedClassifierCV(xgb_model, cv=3, method='sigmoid')
     cal_xgb.fit(X_train_s, y_train)
 
-    use_cal = False
-    for raw, cal, name in [(lgb_model, cal_lgb, 'LightGBM'), (xgb_model, cal_xgb, 'XGBoost')]:
-        r = average_precision_score(y_val, raw.predict_proba(X_val_s)[:, 1])
-        c = average_precision_score(y_val, cal.predict_proba(X_val_s)[:, 1])
-        diff = c - r
-        if diff > 0.01:
-            use_cal = True
-        print(f'  {name}: Raw={r:.4f}  Cal={c:.4f}  Diff={diff:+.4f}')
-
+    r = average_precision_score(y_val, xgb_model.predict_proba(X_val_s)[:, 1])
+    c = average_precision_score(y_val, cal_xgb.predict_proba(X_val_s)[:, 1])
+    use_cal = (c - r) > 0.01
+    print(f'  XGBoost: Raw={r:.4f}  Cal={c:.4f}  Diff={c-r:+.4f}')
     if use_cal:
         print('  >> Usando probabilidades calibradas')
-        yprob_lgb_val = cal_lgb.predict_proba(X_val_s)[:, 1]
-        yprob_xgb_val = cal_xgb.predict_proba(X_val_s)[:, 1]
-        yprob_lgb_test = cal_lgb.predict_proba(X_test_s)[:, 1]
-        yprob_xgb_test = cal_xgb.predict_proba(X_test_s)[:, 1]
+        yprob_val = cal_xgb.predict_proba(X_val_s)[:, 1]
+        yprob_test = cal_xgb.predict_proba(X_test_s)[:, 1]
     else:
         print('  >> Probabilidades raw (calibraci\u00f3n no mejora)')
+        yprob_val = xgb_model.predict_proba(X_val_s)[:, 1]
+        yprob_test = xgb_model.predict_proba(X_test_s)[:, 1]
 
-    # 8. Ensemble weight optimization
-    weights = np.linspace(0, 1, 101)
-    best_w, best_prauc = 0.5, 0
-    for w in weights:
-        yprob_ens = w * yprob_lgb_val + (1 - w) * yprob_xgb_val
-        prauc = average_precision_score(y_val, yprob_ens)
-        if prauc > best_prauc:
-            best_prauc, best_w = prauc, w
-
-    yprob_val = best_w * yprob_lgb_val + (1 - best_w) * yprob_xgb_val
-    yprob_test = best_w * yprob_lgb_test + (1 - best_w) * yprob_xgb_test
-    print(f'  Ensemble: w={best_w:.3f} (LGB) + {1-best_w:.3f} (XGB)  PR-AUC={best_prauc:.4f}')
-
-    # 9. F2 threshold selection on validation
+    # 7. F2 threshold selection on validation
     thrs = np.linspace(0.01, 0.99, 500)
     target_precision = 0.60
     best_t_60, best_rec_60 = None, -1
@@ -194,7 +151,7 @@ def train_pipeline(cfg):
     if best_rec_60 > 0:
         print(f'  Precision>={target_precision:.0%}: t={best_t_60:.4f}  Rec={best_rec_60:.4f}')
 
-    # 10. Test evaluation
+    # 8. Test evaluation
     yp_test = (yprob_test >= best_t).astype(int)
     test_prauc = average_precision_score(y_test, yprob_test)
     test_auc = roc_auc_score(y_test, yprob_test)
@@ -204,15 +161,13 @@ def train_pipeline(cfg):
     print(f'  Test: PR-AUC={test_prauc:.4f}  AUC-ROC={test_auc:.4f}  '
           f'Prec={test_prec:.4f}  Rec={test_rec:.4f}  F1={test_f1:.4f}')
 
-    # 11. Build artifact
+    # 9. Build artifact
     artifact = {
         '_fe_source': FE_SOURCE,
         'fe': fe,
         'scaler': scaler,
         'imputer': imputer,
-        'lgb_model': lgb_model,
         'xgb_model': xgb_model,
-        'best_w': best_w,
         'best_t': best_t,
         'best_prec': best_prec,
         'best_rec': best_rec,
@@ -220,23 +175,20 @@ def train_pipeline(cfg):
         'metadata': {
             'dataset': cfg['name'],
             'label': cfg['label'],
-            'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'fecha': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
             'n_features': X.shape[1],
             'n_train': X_train.shape[0],
             'n_val': X_val.shape[0],
             'n_test': X_test.shape[0],
             'fraud_rate': float(y.mean()),
-            'lightgbm_val_prauc': float(prauc_lgb),
-            'lightgbm_val_auc': float(auc_lgb),
-            'xgboost_val_prauc': float(prauc_xgb),
-            'xgboost_val_auc': float(auc_xgb),
-            'ensemble_val_prauc': float(best_prauc),
-            'ensemble_test_prauc': float(test_prauc),
-            'ensemble_test_auc': float(test_auc),
-            'ensemble_test_precision': float(test_prec),
-            'ensemble_test_recall': float(test_rec),
-            'ensemble_test_f1': float(test_f1),
-            'best_w': float(best_w),
+            'model': 'XGBoost',
+            'val_prauc': float(average_precision_score(y_val, yprob_val)),
+            'val_auc': float(roc_auc_score(y_val, yprob_val)),
+            'test_prauc': float(test_prauc),
+            'test_auc': float(test_auc),
+            'test_precision': float(test_prec),
+            'test_recall': float(test_rec),
+            'test_f1': float(test_f1),
             'f2_threshold': float(best_t),
             'calibration_used': use_cal,
         },
@@ -252,7 +204,7 @@ def train_pipeline(cfg):
 
 print('=== REGENERACI\u00d3N DE MODELOS ===')
 print(f'Feature Engineering: v3 (67 features)')
-print(f'Pipeline: FE -> Scale -> KNNImputer -> LGB/XGB -> Ensemble -> F2 thr')
+print(f'Pipeline: FE -> Scale -> KNNImputer -> XGBoost -> F2 thr')
 print()
 
 results = {}
@@ -263,14 +215,14 @@ for cfg in datasets:
 print(f'\n{"="*60}')
 print('RESUMEN')
 print(f'{"="*60}')
-print(f'{"Dataset":15s} {"PR-AUC":>8s} {"AUC-ROC":>8s} {"Prec":>6s} {"Recall":>7s} {"F1":>6s} {"Thr":>6s} {"w(LGB)":>7s}')
-print(f'{ "-"*15:15s} {"-"*8:>8s} {"-"*8:>8s} {"-"*6:>6s} {"-"*7:>7s} {"-"*6:>6s} {"-"*6:>6s} {"-"*7:>7s}')
+print(f'{"Dataset":15s} {"PR-AUC":>8s} {"AUC-ROC":>8s} {"Prec":>6s} {"Recall":>7s} {"F1":>6s} {"Thr":>6s}')
+print(f'{ "-"*15:15s} {"-"*8:>8s} {"-"*8:>8s} {"-"*6:>6s} {"-"*7:>7s} {"-"*6:>6s} {"-"*6:>6s}')
 for name in ['v1', 'v2']:
     r = results[name]
     m = r['metadata']
-    print(f'{m["label"]:15s} {m["ensemble_test_prauc"]:>8.4f} {m["ensemble_test_auc"]:>8.4f} '
-          f'{m["ensemble_test_precision"]:>6.1%} {m["ensemble_test_recall"]:>6.1%} '
-          f'{m["ensemble_test_f1"]:>6.4f} {m["f2_threshold"]:>6.4f} {m["best_w"]:>7.3f}')
+    print(f'{m["label"]:15s} {m["test_prauc"]:>8.4f} {m["test_auc"]:>8.4f} '
+          f'{m["test_precision"]:>6.1%} {m["test_recall"]:>6.1%} '
+          f'{m["test_f1"]:>6.4f} {m["f2_threshold"]:>6.4f}')
 
 print()
 print('OK')

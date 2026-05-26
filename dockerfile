@@ -11,13 +11,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Dependencias del sistema necesarias para ML
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    gcc \
-    g++ \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+# Sin dependencias extra del sistema (XGBoost no las necesita)
 
 # Copiamos requirements
 COPY requirements-doc.txt .

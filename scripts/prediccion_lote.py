@@ -53,13 +53,11 @@ def main():
     fe = obj['fe']
     scaler = obj['scaler']
     imputer = obj['imputer']
-    lgb_model = obj['lgb_model']
     xgb_model = obj['xgb_model']
-    best_w = obj['best_w']
     best_t = obj['best_t']
     num_feats = obj['num_feats']
 
-    print(f'Ensemble: w(LGB)={best_w:.3f} + w(XGB)={1-best_w:.3f}')
+    print(f'Modelo: XGBoost')
     print(f'Threshold F2: {best_t:.4f}')
     print()
 
@@ -99,15 +97,8 @@ def main():
         X_s = X_s[xgb_cols]
     except Exception:
         pass
-    try:
-        lgb_cols = lgb_model.booster_.feature_name()
-        X_s = X_s[lgb_cols]
-    except Exception:
-        pass
 
-    p_lgb = lgb_model.predict_proba(X_s)[:, 1]
-    p_xgb = xgb_model.predict_proba(X_s)[:, 1]
-    y_prob = best_w * p_lgb + (1 - best_w) * p_xgb
+    y_prob = xgb_model.predict_proba(X_s)[:, 1]
     y_pred = (y_prob >= best_t).astype(int)
 
     df['probabilidad_fraude'] = np.round(y_prob, 4)

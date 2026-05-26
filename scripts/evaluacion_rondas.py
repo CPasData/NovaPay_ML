@@ -167,7 +167,7 @@ def generar_ronda(n=100, seed=None, drift_cfg=None, ronda_idx=0):
         row = {**cliente, **cuenta, **tarjeta, **destino,
                'id_transaccion': str(uuid4())[:12],
                'tipo_transaccion': tipo_tx,
-               'fecha_hora': fecha_hora,
+               'fecha_hora': fecha_hora.isoformat(),
                'is_night': is_night,
                'is_weekend': is_weekend,
                'tiempo_desde_ultima_transaccion': int(random_state.randint(30, 86400)),
@@ -311,9 +311,7 @@ class InferencePipeline:
         self.fe = obj['fe']
         self.scaler = obj['scaler']
         self.imputer = obj['imputer']
-        self.lgb_model = obj['lgb_model']
         self.xgb_model = obj['xgb_model']
-        self.best_w = obj['best_w']
         self.best_t = obj['best_t']
         self.num_feats = obj['num_feats']
         self.metadata = obj.get('metadata', {})
@@ -332,9 +330,7 @@ class InferencePipeline:
         except Exception:
             pass
 
-        p_lgb = self.lgb_model.predict_proba(X_s)[:, 1]
-        p_xgb = self.xgb_model.predict_proba(X_s)[:, 1]
-        y_prob = self.best_w * p_lgb + (1 - self.best_w) * p_xgb
+        y_prob = self.xgb_model.predict_proba(X_s)[:, 1]
         y_pred = (y_prob >= self.best_t).astype(int)
         return y_prob, y_pred
 
@@ -413,7 +409,7 @@ def main():
     print(f'Cargando modelo: {model_path.name}')
     pipeline = InferencePipeline(str(model_path))
     print(f'  Dataset:   {pipeline.metadata.get("label", "?")}')
-    print(f'  Ensemble:  w(LGB)={pipeline.best_w:.3f} + w(XGB)={1-pipeline.best_w:.3f}')
+    print(f'  Modelo:    XGBoost')
     print(f'  Threshold: {pipeline.best_t:.4f}')
     print(f'  Features:  {len(pipeline.num_feats)} numéricas')
     print()
