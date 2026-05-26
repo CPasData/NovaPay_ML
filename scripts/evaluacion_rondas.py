@@ -167,7 +167,7 @@ def generar_ronda(n=100, seed=None, drift_cfg=None, ronda_idx=0):
         row = {**cliente, **cuenta, **tarjeta, **destino,
                'id_transaccion': str(uuid4())[:12],
                'tipo_transaccion': tipo_tx,
-               'fecha_hora': fecha_hora,
+               'fecha_hora': fecha_hora.isoformat(),
                'is_night': is_night,
                'is_weekend': is_weekend,
                'tiempo_desde_ultima_transaccion': int(random_state.randint(30, 86400)),
@@ -404,7 +404,7 @@ def main():
 
     # Cargar modelo
     model_name = f'modelo_07_v1' if args.modelo == 'v1' else 'modelo_08_v2'
-    model_path = Path(__file__).resolve().parent / 'saved_models' / f'{model_name}.pkl'
+    model_path = Path(__file__).resolve().parent.parent / 'model' / f'{model_name}.pkl'
     if not model_path.exists():
         print(f'ERROR: No se encuentra {model_path}')
         print('Ejecuta primero: python scripts/regenerate_models.py')
