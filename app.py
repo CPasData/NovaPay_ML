@@ -23,7 +23,7 @@ app = FastAPI(
 # Un solo pkl con todo dentro:
 # fe, scaler, imputer, lgb_model, xgb_model, best_w, best_t
 # ============================================================
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", "modelo_07_v1.pkl")
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", "modelo_08_v2.pkl")
 modelo     = joblib.load(MODEL_PATH)
 
 fe        = modelo['fe']         # FeatureEngineer
@@ -202,7 +202,7 @@ def health():
     return {
         "status"   : "ok",
         "version"  : "4.1.0",
-        "modelo"   : "modelo_07_v1",
+        "modelo"   : "modelo_08_v2",
         #"ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
         #"threshold": round(best_t, 4),
         #"metadata" : modelo.get('metadata', {})
