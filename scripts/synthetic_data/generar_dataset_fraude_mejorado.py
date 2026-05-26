@@ -266,7 +266,7 @@ for _ in range(N):
         'veces_superar_limite_7_dias': t['veces_superar_limite_7_dias'],
         'id_transaccion': str(uuid.uuid4())[:12],
         'tipo_transaccion': tipo_tx,
-        'fecha_hora': fecha_hora,
+        'fecha_hora': fecha_hora.isoformat(),
         'is_night': is_night,
         'is_weekend': is_weekend,
         'tiempo_desde_ultima_transaccion': tiempo_desde_ultima,

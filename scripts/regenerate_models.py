@@ -20,12 +20,8 @@ from feature_engineering import FeatureEngineer
 # Leer el source completo para embeberlo en el .pkl
 FE_SOURCE = (base / 'feature_engineering.py').read_text(encoding='utf-8')
 
-models_dir = base / 'saved_models'
+models_dir = base.parent / 'model'
 models_dir.mkdir(exist_ok=True)
-
-# Copiar feature_engineering.py junto a los .pkl para carga autónoma
-import shutil
-shutil.copy2(str(base / 'feature_engineering.py'), str(models_dir / 'feature_engineering.py'))
 
 np.random.seed(42)
 

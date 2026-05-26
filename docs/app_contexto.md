@@ -297,7 +297,7 @@ Los datos se envían con los **mismos nombres que están en la BD**:
 | | limite_importe_transacciones | float | 2000.00 |
 | | veces_superar_limite_7_dias | int | 0 |
 | **Transacción** | tipo_transaccion | str | "tarjeta" |
-| | fecha_hora | str | "2026-05-23 14:30:00" |
+| | fecha_hora | str | "2026-05-23T14:30:00" |
 | | is_night | int | 0 |
 | | is_weekend | int | 0 |
 | | tiempo_desde_ultima_transaccion | int | 3600 |

@@ -134,7 +134,7 @@ def generar_muestra(n=100, seed=42):
         tx = {
             'id_transaccion': str(uuid4())[:12],
             'tipo_transaccion': np.random.choice(TIPOS_TRANSACCION, p=[0.7, 0.3]),
-            'fecha_hora': fecha_hora,
+            'fecha_hora': fecha_hora.isoformat(),
             'is_night': is_night,
             'is_weekend': is_weekend,
             'tiempo_desde_ultima_transaccion': int(np.random.randint(30, 86400)),

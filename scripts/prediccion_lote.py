@@ -42,7 +42,7 @@ def main():
     args = parser.parse_args()
 
     model_name = 'modelo_07_v1' if args.modelo == 'v1' else 'modelo_08_v2'
-    model_path = Path(__file__).resolve().parent / 'saved_models' / f'{model_name}.pkl'
+    model_path = Path(__file__).resolve().parent.parent / 'model' / f'{model_name}.pkl'
     if not model_path.exists():
         print(f'ERROR: No se encuentra {model_path}')
         sys.exit(1)

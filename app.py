@@ -82,7 +82,7 @@ class Transaccion(BaseModel):
 
     # Datos de transacción
     tipo_transaccion:               str   = Field(..., json_schema_extra={"example": "tarjeta"})
-    fecha_hora:                     str   = Field(..., json_schema_extra={"example": "2026-05-23 14:30:00"})
+    fecha_hora:                     str   = Field(..., json_schema_extra={"example": "2026-05-23T14:30:00"})
     is_night:                       int   = Field(..., json_schema_extra={"example": 0})
     is_weekend:                     int   = Field(..., json_schema_extra={"example": 0})
     tiempo_desde_ultima_transaccion:    int   = Field(..., json_schema_extra={"example": 3600})
@@ -153,11 +153,11 @@ def predecir(transaccion: Transaccion) -> Prediccion:
     txn_severity     = float(round(X['txn_severity'].values[0], 4))
     net_flow_30d     = float(round(X['net_flow_30d'].values[0], 4))
 
-    # PASO 3 — Imputer
-    X[num_feats] = imputer.transform(X[num_feats])
-
-    # PASO 4 — Scaler
+    # PASO 3 — Scaler
     X[num_feats] = scaler.transform(X[num_feats])
+
+    # PASO 4 — Imputer
+    X[num_feats] = imputer.transform(X[num_feats])
 
     # PASO 5 — Ensemble predict
     prob_lgb = lgb.predict_proba(X)[:, 1]

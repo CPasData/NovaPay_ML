@@ -24,8 +24,8 @@ from pathlib import Path
 # ============================================================
 # 0. Setup: el .py standalone debe estar accesible
 # ============================================================
-# regenerate_models.py copia feature_engineering.py a saved_models/
-pkl_dir = Path(__file__).resolve().parent / 'saved_models'
+# Los .pkl se guardan en model/
+pkl_dir = Path(__file__).resolve().parent.parent / 'model'
 sys.path.insert(0, str(pkl_dir))
 from feature_engineering import FeatureEngineer
 
