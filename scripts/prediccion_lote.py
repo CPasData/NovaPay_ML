@@ -1,12 +1,11 @@
 """
-Genera un CSV con los datos originales más las predicciones del modelo.
+Genera un CSV con los datos originales más predicciones en formato compacto.
 
-Lee un CSV de transacciones (con o sin IS_FRAUD), ejecuta el pipeline completo
-y guarda un nuevo CSV con las columnas originales + probabilidad, predicción binaria
-e impacto estimado.
+Lee un CSV de transacciones, ejecuta el pipeline completo, y guarda un CSV
+con las columnas originales + los 10 campos de predicción.
 
 Uso:
-    python scripts/prediccion_lote.py --input data/dataset_fraude_mejorado.csv --output data/resultado.csv
+    python scripts/prediccion_lote.py --input data/lote_sin_target.csv --output data/predicciones.csv
     python scripts/prediccion_lote.py --input data/muestra_sin_etiqueta.csv --output data/predicciones.csv --modelo v2
 """
 
@@ -19,26 +18,38 @@ import numpy as np
 sys.path.append(str(Path(__file__).resolve().parent))
 from feature_engineering import FeatureEngineer
 
+FE_CAMPOS = {
+    'es_transfronteriza': 'cross_border',
+    'ratio_imp_limite':   'txn_vs_limit_pct',
+    'intensidad_tx':      'txn_intensity',
+    'severidad_tx':       'txn_severity',
+    'flujo_neto_30d':     'net_flow_30d',
+}
+
 
 def calcular_impacto(is_fraud, importe):
     if is_fraud == 0:
         return 0
-    elif importe < 500:
+    if importe < 500:
         return 1
-    elif importe < 2000:
+    if importe < 2000:
         return 2
-    else:
-        return 3
+    return 3
+
+
+def generar_mensaje(prob):
+    pct = round(prob * 100)
+    if prob >= 0.5:
+        return f"Fraude detectado - probabilidad fraude {pct}%"
+    return f"Transaccion legitima - probabilidad fraude {pct}%"
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Batch inference: datos + predicciones en CSV')
+    parser = argparse.ArgumentParser(description='Batch inference: datos originales + predicciones compactas')
     parser.add_argument('--input', required=True, help='CSV de entrada con transacciones')
     parser.add_argument('--output', required=True, help='CSV de salida con predicciones')
     parser.add_argument('--modelo', choices=['v1', 'v2'], default='v2',
                         help='Modelo a usar (v1=original, v2=mejorado)')
-    parser.add_argument('--no-impacto', action='store_true',
-                        help='No incluir columna impacto_fraude')
     args = parser.parse_args()
 
     model_name = 'modelo_07_v1' if args.modelo == 'v1' else 'modelo_08_v2'
@@ -72,20 +83,21 @@ def main():
     df = pd.read_csv(input_path)
     n_total = len(df)
     print(f'Registros: {n_total:,}')
-    tiene_label = 'IS_FRAUD' in df.columns
-    if tiene_label:
-        n_fraude = df['IS_FRAUD'].sum()
-        print(f'IS_FRAUD presente: {n_fraude} fraudes ({n_fraude/n_total*100:.2f}%)')
-    else:
-        print('IS_FRAUD ausente — solo predicción')
 
+    # Feature engineering
     print('Ejecutando pipeline de inferencia...')
     X = fe.transform(df)
 
-    # Anadir columnas de feature engineering al output
-    fe_cols = [c for c in X.columns if c not in df.columns and c != 'IS_FRAUD']
-    for col in fe_cols:
-        df[col] = X[col].values
+    # Extraer campos calculados antes de imputer/scaler
+    for nombre, src in FE_CAMPOS.items():
+        if src in X.columns:
+            vals = X[src].values
+            if nombre == 'es_transfronteriza':
+                df[nombre] = vals.astype(int)
+            else:
+                df[nombre] = vals.astype(float).round(4)
+        else:
+            df[nombre] = 0
 
     X = X.drop(columns=['IS_FRAUD'], errors='ignore')
 
@@ -110,14 +122,20 @@ def main():
     y_prob = best_w * p_lgb + (1 - best_w) * p_xgb
     y_pred = (y_prob >= best_t).astype(int)
 
-    df['probabilidad_fraude'] = np.round(y_prob, 4)
-    df['prediccion_fraude'] = y_pred
+    # Columnas de predicción
+    df['is_fraud'] = y_pred
+    df['prob_fraud'] = np.round(y_prob, 4)
+    df['impacto_fraude'] = [calcular_impacto(pred, imp)
+                            for pred, imp in zip(y_pred, df['importe_transaccion'])]
+    df['mensaje'] = [generar_mensaje(p) for p in y_prob]
 
-    if not args.no_impacto:
-        df['impacto_fraude'] = [
-            calcular_impacto(pred, imp)
-            for pred, imp in zip(y_pred, df['importe_transaccion'])
-        ]
+    # Reordenar: originales + predicciones al final
+    base_cols = [c for c in df.columns if c not in (
+        'is_fraud', 'prob_fraud', 'impacto_fraude', 'mensaje',
+        *FE_CAMPOS.keys())]
+    pred_cols = ['is_fraud', 'prob_fraud', 'impacto_fraude',
+                 *FE_CAMPOS.keys(), 'mensaje']
+    df = df[base_cols + pred_cols]
 
     output_path = Path(args.output)
     output_path.parent.mkdir(exist_ok=True)
@@ -126,6 +144,7 @@ def main():
     detectados = y_pred.sum()
     print()
     print(f'Predicciones: {detectados} fraudes detectados ({detectados/n_total*100:.2f}%)')
+    tiene_label = 'IS_FRAUD' in df.columns
     if tiene_label:
         reales = df['IS_FRAUD'].sum()
         tp = ((y_pred == 1) & (df['IS_FRAUD'] == 1)).sum()

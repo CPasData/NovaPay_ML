@@ -34,7 +34,6 @@ def main():
         for col in COLUMNS_EXCLUIR:
             if col in df.columns:
                 df = df.drop(columns=[col])
-        df['dataset_origen'] = nombre
         todos.append(df)
 
     df_out = pd.concat(todos, ignore_index=True)
