@@ -201,7 +201,7 @@ def health():
     """
     return {
         "status"   : "ok",
-        "version"  : "4.0.0",
+        "version"  : "4.1.0",
         "modelo"   : "modelo_07_v1",
         #"ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
         #"threshold": round(best_t, 4),
