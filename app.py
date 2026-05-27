@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
 import uvicorn
 import joblib
@@ -50,6 +50,7 @@ if per_channel_thr:
 # Usa nombres largos del CSV
 # ============================================================
 class Transaccion(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, str_min_length=1)
 
     # Identificación
     id_transaccion: str = Field(..., json_schema_extra={"example": "059638c5-40f"})
@@ -59,7 +60,7 @@ class Transaccion(BaseModel):
     # Datos del cliente
     id_cliente:                     str   = Field(..., json_schema_extra={"example": "3ddebd45-ccd"})
     tipo_cliente:                   str   = Field(..., json_schema_extra={"example": "persona"})
-    edad_cliente:                   int   = Field(..., json_schema_extra={"example": 35})
+    edad_cliente:                   int   = Field(..., ge=0, le=120, json_schema_extra={"example": 35})
     customer_country:               str   = Field(..., json_schema_extra={"example": "ES"})
     customer_region:                str   = Field(..., json_schema_extra={"example": "Centro"})
     tenure:                         int   = Field(..., json_schema_extra={"example": 365})
@@ -106,6 +107,27 @@ class Transaccion(BaseModel):
     cuenta_destino:                 Optional[str] = Field(None, json_schema_extra={"example": "ES169540317577"})
     destino_alto_riesgo:            int   = Field(..., json_schema_extra={"example": 0})
 
+    @field_validator('importe_transaccion')
+    @classmethod
+    def importe_positivo(cls, v):
+        if v <= 0:
+            raise ValueError('El importe debe ser positivo')
+        return v
+
+    @field_validator('dispositivo_reconocido', 'is_night', 'is_weekend', 'destino_alto_riesgo')
+    @classmethod
+    def binario(cls, v):
+        if v not in (0, 1):
+            raise ValueError(f'Debe ser 0 o 1, se recibió {v}')
+        return v
+
+    @field_validator('numero_pin_disponibles')
+    @classmethod
+    def pin_no_negativo(cls, v):
+        if v < 0:
+            raise ValueError('numero_pin_disponibles no puede ser negativo')
+        return v
+
 
 # ============================================================
 # MODELO DE RESPUESTA
@@ -121,6 +143,13 @@ class Prediccion(BaseModel):
     severidad_tx:       float  # importe * num_transacciones → alto = sospechoso
     flujo_neto_30d:     float  # vol_entrante - vol_saliente → negativo = sale más de lo que entra
     mensaje:            str    # "FRAUDE DETECTADO" o "Transacción legítima"
+
+    @field_validator('prob_fraud')
+    @classmethod
+    def prob_entre_0_y_1(cls, v):
+        if v < 0.0 or v > 1.0:
+            raise ValueError('prob_fraud debe estar entre 0.0 y 1.0')
+        return v
 
 
 # ============================================================
