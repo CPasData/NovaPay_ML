@@ -216,4 +216,4 @@ Se recomienda monitorizar con KS-test (numéricas) y chi-cuadrado (categóricas)
 
 ---
 
-*Las cifras empíricas de este documento proceden del análisis del dataset sintético v2 (`dataset_fraude_mejorado.csv`, PR-AUC 0.9557). Los valores no son representativos de datos reales de producción, donde las distribuciones serán más ruidosas y el rendimiento esperado será menor.*
+*Las cifras empíricas de este documento proceden del análisis del dataset sintético v2 (`dataset_fraude_v2.csv`, PR-AUC 0.9557). Los valores no son representativos de datos reales de producción, donde las distribuciones serán más ruidosas y el rendimiento esperado será menor.*

@@ -51,7 +51,7 @@ Lo mismo que desarrollo. No se usa nada adicional fuera de lo ya listado.
 Solo los scripts de `scripts/synthetic_data/`:
 
 ```
-faker            # generar_dataset_fraude.py y generar_dataset_fraude_mejorado.py
+faker            # generar_dataset_fraude.py y generar_dataset_fraude_v2.py
 sdv              # solo scripts/synthetic_data/sdv/generar_dataset_sdv.py
 ```
 

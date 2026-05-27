@@ -52,7 +52,7 @@ print(f'  Features: {len(num_feats)} numéricas')
 
 # 2. Cargar datos nuevos (mismas columnas que entrenamiento)
 
-df = pd.read_csv(Path.cwd() / 'data' / 'dataset_fraude_mejorado.csv')
+df = pd.read_csv(Path.cwd() / 'data' / 'dataset_fraude_v2.csv')
 y_true = df['IS_FRAUD'].values
 
 

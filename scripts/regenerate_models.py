@@ -47,8 +47,8 @@ datasets = [
     },
     {
         'name': 'v2',
-        'label': 'v2 (mejorado)',
-        'data_path': base.parent / 'data' / 'dataset_fraude_mejorado.csv',
+        'label': 'v2',
+        'data_path': base.parent / 'data' / 'dataset_fraude_v2.csv',
         'savename': 'modelo_08_v2.pkl',
         'lgb_params': {
             'learning_rate': 0.1, 'min_child_samples': 100,

@@ -67,7 +67,7 @@ siempre, creando variabilidad realista):
 
 ## Resultados
 
-| Métrica | v1 (original) | v2 (mejorado) | Mejora |
+| Métrica | v1 (original) | v2 | Mejora |
 |---|---|---|---|
 | PR-AUC | 0.3466 | 0.9557 | +176% |
 | AUC-ROC | 0.7316 | 0.9862 | +35% |
@@ -93,8 +93,7 @@ ya está validado.
 ## Cómo Usar
 
 ```bash
-python scripts/synthetic_data/generar_dataset_fraude_mejorado.py
-```
+python scripts/synthetic_data/generar_dataset_fraude_v2.py
 
-Esto produce `data/dataset_fraude_mejorado.csv` con las **mismas columnas** que el
+Esto produce `data/dataset_fraude_v2.csv` con las **mismas columnas** que el
 original.

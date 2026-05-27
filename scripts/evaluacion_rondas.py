@@ -399,7 +399,7 @@ def calcular_psi(esperado, actual, bins=10):
 def main():
     parser = argparse.ArgumentParser(description='Evaluación por rondas de 100 txns')
     parser.add_argument('--modelo', choices=['v1', 'v2', 'v3'], default='v3',
-                        help='Modelo a evaluar (v1=original, v2=mejorado, v3=3por100)')
+                        help='Modelo a evaluar (v1, v2, v3)')
     parser.add_argument('--rondas', type=int, default=50,
                         help='Número de rondas de 100 transacciones')
     parser.add_argument('--drift', choices=['baseline', 'suave', 'abrupto', 'concepto'],

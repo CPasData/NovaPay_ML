@@ -1,5 +1,5 @@
 """
-Genera un CSV combinando dataset_fraude.csv y dataset_fraude_mejorado.csv
+Genera un CSV combinando dataset_fraude.csv y dataset_fraude_v2.csv
 SIN columnas target (IS_FRAUD, IMPACTO_FRAUDE) para pasar por prediccion_lote.py.
 
 Uso:
@@ -24,7 +24,7 @@ def main():
 
     rutas = [
         ('v1', data_dir / 'dataset_fraude.csv'),
-        ('v2', data_dir / 'dataset_fraude_mejorado.csv'),
+        ('v2', data_dir / 'dataset_fraude_v2.csv'),
     ]
 
     todos = []
