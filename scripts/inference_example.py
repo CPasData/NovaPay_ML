@@ -22,17 +22,17 @@ import numpy as np
 from pathlib import Path
 
 # ============================================================
-# 0. Setup: el .py standalone debe estar accesible
+# 0. Setup
 # ============================================================
-# Los .pkl se guardan en model/
-pkl_dir = Path(__file__).resolve().parent.parent / 'model'
-sys.path.insert(0, str(pkl_dir))
+scripts_dir = Path(__file__).resolve().parent
+pkl_dir = scripts_dir.parent / 'model'
+sys.path.insert(0, str(scripts_dir))
 from feature_engineering import FeatureEngineer
 
 # ============================================================
 # 1. Cargar modelo
 # ============================================================
-model_path = pkl_dir / 'modelo_08_v2.pkl'
+model_path = pkl_dir / 'modelo_09_v3.pkl'
 obj = joblib.load(model_path)
 
 fe = obj['fe']

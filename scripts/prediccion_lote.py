@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from feature_engineering import FeatureEngineer
 
 FE_CAMPOS = {
@@ -48,11 +48,12 @@ def main():
     parser = argparse.ArgumentParser(description='Batch inference: datos originales + predicciones compactas')
     parser.add_argument('--input', required=True, help='CSV de entrada con transacciones')
     parser.add_argument('--output', required=True, help='CSV de salida con predicciones')
-    parser.add_argument('--modelo', choices=['v1', 'v2'], default='v2',
-                        help='Modelo a usar (v1=original, v2=mejorado)')
+    parser.add_argument('--modelo', choices=['v1', 'v2', 'v3'], default='v3',
+                        help='Modelo a usar (v1=original, v2=mejorado, v3=3por100)')
     args = parser.parse_args()
 
-    model_name = 'modelo_07_v1' if args.modelo == 'v1' else 'modelo_08_v2'
+    model_map = {'v1': 'modelo_07_v1', 'v2': 'modelo_08_v2', 'v3': 'modelo_09_v3'}
+    model_name = model_map[args.modelo]
     model_path = Path(__file__).resolve().parent.parent / 'model' / f'{model_name}.pkl'
     if not model_path.exists():
         print(f'ERROR: No se encuentra {model_path}')
@@ -69,9 +70,12 @@ def main():
     best_w = obj['best_w']
     best_t = obj['best_t']
     num_feats = obj['num_feats']
+    per_channel_thr = obj.get('per_channel_thresholds', {})
 
     print(f'Ensemble: w(LGB)={best_w:.3f} + w(XGB)={1-best_w:.3f}')
     print(f'Threshold F2: {best_t:.4f}')
+    if per_channel_thr:
+        print(f'Thresholds por canal: {per_channel_thr}')
     print()
 
     input_path = Path(args.input)
@@ -120,7 +124,13 @@ def main():
     p_lgb = lgb_model.predict_proba(X_s)[:, 1]
     p_xgb = xgb_model.predict_proba(X_s)[:, 1]
     y_prob = best_w * p_lgb + (1 - best_w) * p_xgb
-    y_pred = (y_prob >= best_t).astype(int)
+
+    # Threshold por canal o global
+    y_pred = np.zeros(len(y_prob), dtype=int)
+    for canal in df['tipo_transaccion'].unique():
+        thr_c = per_channel_thr.get(canal, best_t)
+        mask = df['tipo_transaccion'].values == canal
+        y_pred[mask] = (y_prob[mask] >= thr_c).astype(int)
 
     # Columnas de predicción
     df['is_fraud'] = y_pred

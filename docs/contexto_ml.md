@@ -381,7 +381,7 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 - `generar_muestra_sin_etiqueta.py`: genera CSV sin IS_FRAUD para testear API/inferencia
 - `residuos_y_evaluacion.md`: estudio completo de técnicas de análisis de residuos
 - `regenerate_models.py`: script que regenera ambos modelos
-- `app.py`: API FastAPI para inferencia en producción
+- `app.py`: API FastAPI para inferencia en producción (v5.0.0 con validación Pydantic v2)
 - Todos los notebooks y scripts con paths correctos (`scripts/`, `notebooks/`, `data/`, `docs/`)
 - `IMPACTO_FRAUDE` eliminado de generadores — se calcula post-inferencia como regla de negocio
 - Generadores actualizados para guardar en `data/` automáticamente
@@ -401,6 +401,41 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 ### Roles:
 - **Colaborador (ML/DS)**: entrenamiento del modelo, feature engineering, generación de datos sintéticos
 - No hay dependencias externas bloqueantes para continuar
+
+---
+
+### Pydantic v2 — Validación de entrada en API
+
+`app.py` usa `field_validator` y `ConfigDict` de Pydantic v2 para validar
+datos antes de que el modelo los procese:
+
+```python
+class Transaccion(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, str_min_length=1)
+    edad_cliente: int = Field(..., ge=0, le=120)
+
+    @field_validator('importe_transaccion')
+    @classmethod
+    def importe_positivo(cls, v):
+        if v <= 0:
+            raise ValueError('El importe debe ser positivo')
+        return v
+
+    @field_validator('dispositivo_reconocido', 'is_night', 'is_weekend', 'destino_alto_riesgo')
+    @classmethod
+    def binario(cls, v):
+        if v not in (0, 1):
+            raise ValueError(f'Debe ser 0 o 1, se recibió {v}')
+        return v
+```
+
+Campos validados: `importe_transaccion` (>0), `dispositivo_reconocido` (0/1),
+`is_night` (0/1), `is_weekend` (0/1), `destino_alto_riesgo` (0/1),
+`numero_pin_disponibles` (≥0), `edad_cliente` (0-120).
+La respuesta también valida `prob_fraud` (0.0-1.0) para evitar errores numéricos.
+
+Sin riesgo de ruptura: los validadores solo rechazan valores imposibles (edad 999,
+importe negativo, flag=3), nada que antes fuera válido.
 
 ---
 

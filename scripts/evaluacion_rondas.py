@@ -30,7 +30,7 @@ from sklearn.metrics import (
 )
 from scipy.stats import ks_2samp
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from feature_engineering import FeatureEngineer
 
 
@@ -52,7 +52,7 @@ PAISES_REGIONES = {
 TIPOS_CLIENTE = ['persona', 'empresa', 'autónomo', 'premium']
 ESTADOS_CUENTA = ['activa', 'bloqueada', 'suspendida', 'cerrada']
 ESTADOS_TARJETA = ['activa', 'bloqueada', 'caducada', 'robada', 'extraviada']
-TIPOS_TRANSACCION = ['tarjeta', 'transferencia']
+TIPOS_TRANSACCION = ['tarjeta', 'transferencia', 'bizum']
 METODOS_AUTH = ['PIN', 'firma', '3DS', 'huella', 'contactless']
 
 TOP_LEVEL_KEYS = {
@@ -162,7 +162,7 @@ def generar_ronda(n=100, seed=None, drift_cfg=None, ronda_idx=0):
             op_pais = random_state.choice(otros)
             op_region = random_state.choice(PAISES_REGIONES[op_pais])
 
-        tipo_tx = random_state.choice(TIPOS_TRANSACCION, p=[0.7, 0.3])
+        tipo_tx = random_state.choice(TIPOS_TRANSACCION, p=[0.6, 0.25, 0.15])
 
         row = {**cliente, **cuenta, **tarjeta, **destino,
                'id_transaccion': str(uuid4())[:12],
@@ -217,25 +217,26 @@ def generar_ronda(n=100, seed=None, drift_cfg=None, ronda_idx=0):
 
 
 def _calc_base_prob(row):
-    prob = 0.01
+    prob = 0.005
     cm = row['customer_country'] != row['operacion_pais']
     rm = (row['customer_country'] == row['operacion_pais'] and
           row['customer_region'] != row['operacion_region'])
-    if cm: prob += 0.15
-    elif rm: prob += 0.05
-    if row['dispositivo_reconocido'] == 0: prob += 0.10
-    if row['estado_cuenta'] == 'bloqueada': prob += 0.15
-    if row['estado_tarjeta'] in ('robada', 'extraviada', 'bloqueada'): prob += 0.25
-    if row['importe_transaccion'] > row['limite_importe_transacciones'] * 0.9: prob += 0.10
-    if row['is_night'] and row['importe_transaccion'] > 500: prob += 0.05
-    if row['volumen_saliente_30_dias'] > row['volumen_entrante_30_dias'] * 3: prob += 0.03
-    if row['numero_transacciones_ultima_hora'] > 5: prob += 0.08
-    if row['tiempo_desde_ultima_transaccion'] < 60 and row['importe_transaccion'] > 1000: prob += 0.06
-    if row['veces_superar_limite_7_dias'] > 3: prob += 0.10
-    if row['metodo_autenticacion'] == 'firma': prob += 0.02
-    if row['numero_pin_disponibles'] == 0: prob += 0.08
-    if row['tipo_transaccion'] == 'transferencia': prob += 0.05
-    if row['destino_alto_riesgo'] == 1: prob += 0.20
+    if cm: prob += 0.03
+    elif rm: prob += 0.01
+    if row['dispositivo_reconocido'] == 0: prob += 0.02
+    if row['estado_cuenta'] == 'bloqueada': prob += 0.03
+    if row['estado_tarjeta'] in ('robada', 'extraviada', 'bloqueada'): prob += 0.05
+    if row['importe_transaccion'] > row['limite_importe_transacciones'] * 0.9: prob += 0.02
+    if row['is_night'] and row['importe_transaccion'] > 500: prob += 0.01
+    if row['volumen_saliente_30_dias'] > row['volumen_entrante_30_dias'] * 3: prob += 0.01
+    if row['numero_transacciones_ultima_hora'] > 5: prob += 0.02
+    if row['tiempo_desde_ultima_transaccion'] < 60 and row['importe_transaccion'] > 1000: prob += 0.01
+    if row['veces_superar_limite_7_dias'] > 3: prob += 0.02
+    if row['metodo_autenticacion'] == 'firma': prob += 0.005
+    if row['numero_pin_disponibles'] == 0: prob += 0.02
+    if row['tipo_transaccion'] == 'transferencia': prob += 0.01
+    if row['tipo_transaccion'] == 'bizum': prob += 0.005
+    if row['destino_alto_riesgo'] == 1: prob += 0.04
     return min(prob, 0.95)
 
 
@@ -316,6 +317,7 @@ class InferencePipeline:
         self.best_w = obj['best_w']
         self.best_t = obj['best_t']
         self.num_feats = obj['num_feats']
+        self.per_channel_thr = obj.get('per_channel_thresholds', {})
         self.metadata = obj.get('metadata', {})
 
     def predict(self, df):
@@ -325,7 +327,6 @@ class InferencePipeline:
         X_s[self.num_feats] = self.scaler.transform(X[self.num_feats])
         X_s[self.num_feats] = self.imputer.transform(X_s[self.num_feats])
 
-        # XGBoost requiere el mismo orden de columnas que en entrenamiento
         try:
             xgb_cols = self.xgb_model.get_booster().feature_names
             X_s = X_s[xgb_cols]
@@ -335,7 +336,13 @@ class InferencePipeline:
         p_lgb = self.lgb_model.predict_proba(X_s)[:, 1]
         p_xgb = self.xgb_model.predict_proba(X_s)[:, 1]
         y_prob = self.best_w * p_lgb + (1 - self.best_w) * p_xgb
-        y_pred = (y_prob >= self.best_t).astype(int)
+
+        y_pred = np.zeros(len(y_prob), dtype=int)
+        for canal in df['tipo_transaccion'].unique():
+            thr = self.per_channel_thr.get(canal, self.best_t)
+            mask = df['tipo_transaccion'].values == canal
+            y_pred[mask] = (y_prob[mask] >= thr).astype(int)
+
         return y_prob, y_pred
 
 
@@ -391,8 +398,8 @@ def calcular_psi(esperado, actual, bins=10):
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluación por rondas de 100 txns')
-    parser.add_argument('--modelo', choices=['v1', 'v2'], default='v2',
-                        help='Modelo a evaluar (v1=original, v2=mejorado)')
+    parser.add_argument('--modelo', choices=['v1', 'v2', 'v3'], default='v3',
+                        help='Modelo a evaluar (v1=original, v2=mejorado, v3=3por100)')
     parser.add_argument('--rondas', type=int, default=50,
                         help='Número de rondas de 100 transacciones')
     parser.add_argument('--drift', choices=['baseline', 'suave', 'abrupto', 'concepto'],
@@ -403,7 +410,8 @@ def main():
     args = parser.parse_args()
 
     # Cargar modelo
-    model_name = f'modelo_07_v1' if args.modelo == 'v1' else 'modelo_08_v2'
+    model_map = {'v1': 'modelo_07_v1', 'v2': 'modelo_08_v2', 'v3': 'modelo_09_v3'}
+    model_name = model_map[args.modelo]
     model_path = Path(__file__).resolve().parent.parent / 'model' / f'{model_name}.pkl'
     if not model_path.exists():
         print(f'ERROR: No se encuentra {model_path}')
@@ -415,6 +423,8 @@ def main():
     print(f'  Dataset:   {pipeline.metadata.get("label", "?")}')
     print(f'  Ensemble:  w(LGB)={pipeline.best_w:.3f} + w(XGB)={1-pipeline.best_w:.3f}')
     print(f'  Threshold: {pipeline.best_t:.4f}')
+    if pipeline.per_channel_thr:
+        print(f'  Thr/canal: {pipeline.per_channel_thr}')
     print(f'  Features:  {len(pipeline.num_feats)} numéricas')
     print()
 

@@ -9,7 +9,8 @@ Sin dependencias de modelos, pipelines ni testeo — solo datos.
 
 Uso:
     python scripts/generar_muestra_sin_etiqueta.py
-    python scripts/generar_muestra_sin_etiqueta.py --n 500 --output data/muestra_test.csv
+    python scripts/generar_muestra_sin_etiqueta.py --n 500 --output data/muestra_test
+    # Genera muestra_test.csv y muestra_test.json
 """
 
 import argparse
@@ -36,7 +37,7 @@ PAISES_REGIONES = {
 TIPOS_CLIENTE = ['persona', 'empresa', 'autónomo', 'premium']
 ESTADOS_CUENTA = ['activa', 'bloqueada', 'suspendida', 'cerrada']
 ESTADOS_TARJETA = ['activa', 'bloqueada', 'caducada', 'robada', 'extraviada']
-TIPOS_TRANSACCION = ['tarjeta', 'transferencia']
+TIPOS_TRANSACCION = ['tarjeta', 'transferencia', 'bizum']
 METODOS_AUTH = ['PIN', 'firma', '3DS', 'huella', 'contactless']
 
 COLUMNAS = [
@@ -133,7 +134,7 @@ def generar_muestra(n=100, seed=42):
 
         tx = {
             'id_transaccion': str(uuid4())[:12],
-            'tipo_transaccion': np.random.choice(TIPOS_TRANSACCION, p=[0.7, 0.3]),
+            'tipo_transaccion': np.random.choice(TIPOS_TRANSACCION, p=[0.6, 0.25, 0.15]),
             'fecha_hora': fecha_hora.isoformat(),
             'is_night': is_night,
             'is_weekend': is_weekend,
@@ -157,17 +158,25 @@ def generar_muestra(n=100, seed=42):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Generar CSV de transacciones sin etiqueta')
-    parser.add_argument('--n', type=int, default=100, help='Número de transacciones')
+    parser = argparse.ArgumentParser(description='Generar CSV/JSON de transacciones sin etiqueta (patrón v3)')
+    parser.add_argument('--n', type=int, default=200, help='Número de transacciones')
     parser.add_argument('--seed', type=int, default=42, help='Semilla aleatoria')
-    parser.add_argument('--output', type=str, default='data/muestra_sin_etiqueta.csv',
-                        help='Ruta del CSV de salida')
+    parser.add_argument('--output', type=str, default='data/muestra_sin_etiqueta',
+                        help='Ruta base de salida (sin extensión)')
     args = parser.parse_args()
 
+    base_path = Path(__file__).resolve().parent.parent / args.output
+    base_path.parent.mkdir(exist_ok=True)
+
     df = generar_muestra(n=args.n, seed=args.seed)
-    output_path = Path(__file__).resolve().parent.parent / args.output
-    output_path.parent.mkdir(exist_ok=True)
-    df.to_csv(output_path, index=False, encoding='utf-8')
-    print(f"Generadas {len(df)} transacciones sin etiqueta")
-    print(f"Guardado en: {output_path}")
-    print(f"Columnas: {len(df.columns)}")
+
+    csv_path = base_path.with_suffix('.csv')
+    df.to_csv(csv_path, index=False, encoding='utf-8')
+
+    json_path = base_path.with_suffix('.json')
+    df.to_json(json_path, orient='records', indent=2, force_ascii=False, date_format='iso')
+
+    print(f"Generadas {len(df)} transacciones sin etiqueta (patrón v3)")
+    print(f"  CSV:  {csv_path}")
+    print(f"  JSON: {json_path}")
+    print(f"  Columnas: {len(df.columns)}")

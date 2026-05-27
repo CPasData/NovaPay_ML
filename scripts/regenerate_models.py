@@ -8,13 +8,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import KNNImputer
 from sklearn.metrics import (roc_auc_score, average_precision_score,
-    precision_score, recall_score, fbeta_score)
+    precision_score, recall_score, fbeta_score, brier_score_loss)
 from sklearn.calibration import CalibratedClassifierCV
 import xgboost as xgb
 import lightgbm as lgb
 
 base = Path(__file__).resolve().parent
-sys.path.append(str(base))
+sys.path.insert(0, str(base))
 from feature_engineering import FeatureEngineer
 
 # Leer el source completo para embeberlo en el .pkl
@@ -50,6 +50,22 @@ datasets = [
         'label': 'v2 (mejorado)',
         'data_path': base.parent / 'data' / 'dataset_fraude_mejorado.csv',
         'savename': 'modelo_08_v2.pkl',
+        'lgb_params': {
+            'learning_rate': 0.1, 'min_child_samples': 100,
+            'n_estimators': 200, 'num_leaves': 15,
+            'reg_lambda': 10, 'subsample': 0.8,
+        },
+        'xgb_params': {
+            'learning_rate': 0.05, 'max_depth': 3,
+            'min_child_weight': 1, 'n_estimators': 200,
+            'reg_lambda': 0, 'subsample': 1.0,
+        },
+    },
+    {
+        'name': 'v3',
+        'label': 'v3 (3% fraude)',
+        'data_path': base.parent / 'data' / 'dataset_fraude_v3.csv',
+        'savename': 'modelo_09_v3.pkl',
         'lgb_params': {
             'learning_rate': 0.1, 'min_child_samples': 100,
             'n_estimators': 200, 'num_leaves': 15,
@@ -200,7 +216,61 @@ def train_pipeline(cfg):
     print(f'  Test: PR-AUC={test_prauc:.4f}  AUC-ROC={test_auc:.4f}  '
           f'Prec={test_prec:.4f}  Rec={test_rec:.4f}  F1={test_f1:.4f}')
 
-    # 11. Build artifact
+    # 11. Brier Score y ECE (Expected Calibration Error)
+    brier = brier_score_loss(y_test, yprob_test)
+    n_bins = 10
+    bin_edges = np.linspace(0, 1, n_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    ece = 0.0
+    for i in range(n_bins):
+        in_bin = (yprob_test >= bin_edges[i]) & (yprob_test < bin_edges[i + 1])
+        if in_bin.sum() > 0:
+            acc = y_test[in_bin].mean()
+            conf = yprob_test[in_bin].mean()
+            ece += (in_bin.sum() / len(y_test)) * abs(acc - conf)
+    print(f'  Brier={brier:.4f}  ECE={ece:.4f}')
+
+    # 12. Per-channel threshold optimization (solo para v3 con tipo_transaccion)
+    canales = ['tarjeta', 'transferencia', 'bizum']
+    per_channel_thresholds = {}
+    if cfg['name'] == 'v3' and 'tipo_transaccion' in df.columns:
+        df_val = df.loc[X_val.index]
+        for canal in canales:
+            mask = df_val['tipo_transaccion'].values == canal
+            if mask.sum() < 10:
+                continue
+            yc = y_val[mask]
+            pc = yprob_val[mask]
+            thrs_c = np.linspace(0.01, 0.99, 200)
+            best_f2_c, best_t_c = -1, best_t
+            for t in thrs_c:
+                yc_pred = (pc >= t).astype(int)
+                n_pos = yc_pred.sum()
+                if n_pos == 0:
+                    continue
+                p_c = precision_score(yc, yc_pred, zero_division=0)
+                r_c = recall_score(yc, yc_pred, zero_division=0)
+                f2_c = (5 * p_c * r_c) / (4 * p_c + r_c + 1e-10)
+                if f2_c > best_f2_c:
+                    best_f2_c, best_t_c = f2_c, t
+            per_channel_thresholds[canal] = float(best_t_c)
+        print(f'  Thresholds por canal: {per_channel_thresholds}')
+
+    # 13. Recall@k (simula produccion: 200 alertas / 200k tx = 0.1%)
+    k_pct = 0.001  # top 0.1%
+    k = max(1, int(len(y_test) * k_pct))
+    top_k_idx = np.argsort(yprob_test)[-k:]
+    total_frauds_test = int(y_test.sum())
+    frauds_in_top_k = int(y_test[top_k_idx].sum())
+    recall_at_k = frauds_in_top_k / total_frauds_test if total_frauds_test > 0 else 0
+    alert_precision = frauds_in_top_k / k
+    print(f'  Recall@k (k={k}, {k_pct*100:.1f}%): {recall_at_k:.4f}  '
+          f'Fraudes capturados={frauds_in_top_k}/{total_frauds_test}  '
+          f'Precision en alertas={alert_precision:.4f}')
+    if cfg['name'] == 'v3':
+        print(f'  >> Equivale a {frauds_in_top_k} fraudes capturados de {total_frauds_test} en ~200 alertas diarias')
+
+    # 14. Build artifact
     artifact = {
         '_fe_source': FE_SOURCE,
         'fe': fe,
@@ -235,8 +305,18 @@ def train_pipeline(cfg):
             'best_w': float(best_w),
             'f2_threshold': float(best_t),
             'calibration_used': use_cal,
+            'brier_score': float(brier),
+            'expected_calibration_error': float(ece),
+            'recall_at_k': float(recall_at_k),
+            'recall_at_k_pct': k_pct,
+            'alert_precision': float(alert_precision),
+            'frauds_in_top_k': int(frauds_in_top_k),
+            'total_frauds_test': int(total_frauds_test),
         },
     }
+
+    if per_channel_thresholds:
+        artifact['per_channel_thresholds'] = per_channel_thresholds
 
     path = models_dir / cfg['savename']
     joblib.dump(artifact, path)
@@ -247,8 +327,8 @@ def train_pipeline(cfg):
 # TRAIN BOTH
 
 print('=== REGENERACI\u00d3N DE MODELOS ===')
-print(f'Feature Engineering: v3 (67 features)')
-print(f'Pipeline: FE -> Scale -> KNNImputer -> LGB/XGB -> Ensemble -> F2 thr')
+print(f'Feature Engineering: v4 (z-score, sin high_ratio_redondeado)')
+print(f'Pipeline: FE -> Scale -> KNNImputer -> LGB/XGB -> Ensemble -> F2 thr | per-channel thr | recall@k')
 print()
 
 results = {}
@@ -259,14 +339,15 @@ for cfg in datasets:
 print(f'\n{"="*60}')
 print('RESUMEN')
 print(f'{"="*60}')
-print(f'{"Dataset":15s} {"PR-AUC":>8s} {"AUC-ROC":>8s} {"Prec":>6s} {"Recall":>7s} {"F1":>6s} {"Thr":>6s} {"w(LGB)":>7s}')
-print(f'{ "-"*15:15s} {"-"*8:>8s} {"-"*8:>8s} {"-"*6:>6s} {"-"*7:>7s} {"-"*6:>6s} {"-"*6:>6s} {"-"*7:>7s}')
-for name in ['v1', 'v2']:
+print(f'{"Dataset":15s} {"PR-AUC":>8s} {"AUC-ROC":>8s} {"Prec":>6s} {"Recall":>7s} {"F1":>6s} {"Thr":>6s} {"w(LGB)":>7s} {"Rec@k":>7s} {"Brier":>7s} {"ECE":>7s}')
+print(f'{ "-"*15:15s} {"-"*8:>8s} {"-"*8:>8s} {"-"*6:>6s} {"-"*7:>7s} {"-"*6:>6s} {"-"*6:>6s} {"-"*7:>7s} {"-"*7:>7s} {"-"*7:>7s} {"-"*7:>7s}')
+for name in ['v1', 'v2', 'v3']:
     r = results[name]
     m = r['metadata']
     print(f'{m["label"]:15s} {m["ensemble_test_prauc"]:>8.4f} {m["ensemble_test_auc"]:>8.4f} '
           f'{m["ensemble_test_precision"]:>6.1%} {m["ensemble_test_recall"]:>6.1%} '
-          f'{m["ensemble_test_f1"]:>6.4f} {m["f2_threshold"]:>6.4f} {m["best_w"]:>7.3f}')
+          f'{m["ensemble_test_f1"]:>6.4f} {m["f2_threshold"]:>6.4f} {m["best_w"]:>7.3f} '
+          f'{m.get("recall_at_k", 0):>7.4f} {m.get("brier_score", 0):>7.4f} {m.get("expected_calibration_error", 0):>7.4f}')
 
 print()
 print('OK')
