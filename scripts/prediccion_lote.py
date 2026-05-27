@@ -49,7 +49,7 @@ def main():
     parser.add_argument('--input', required=True, help='CSV de entrada con transacciones')
     parser.add_argument('--output', required=True, help='CSV de salida con predicciones')
     parser.add_argument('--modelo', choices=['v1', 'v2', 'v3'], default='v3',
-                        help='Modelo a usar (v1=original, v2=mejorado, v3=3por100)')
+                        help='Modelo a usar (v1, v2, v3)')
     args = parser.parse_args()
 
     model_map = {'v1': 'modelo_07_v1', 'v2': 'modelo_08_v2', 'v3': 'modelo_09_v3'}

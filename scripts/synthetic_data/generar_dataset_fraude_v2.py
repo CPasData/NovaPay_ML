@@ -329,6 +329,6 @@ columnas_final = [
 df = df[columnas_final]
 output_dir = Path(__file__).resolve().parent.parent.parent / 'data'
 output_dir.mkdir(exist_ok=True)
-output_path = output_dir / 'dataset_fraude_mejorado.csv'
+output_path = output_dir / 'dataset_fraude_v2.csv'
 df.to_csv(output_path, index=False, encoding='utf-8')
 print(f"Dataset guardado en {output_path}")

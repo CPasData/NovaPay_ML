@@ -31,16 +31,16 @@ C:\Dev\NovaPay_ML\
 │   ├── inference_example.py         # Ejemplo de inferencia con modelo guardado
 │   ├── prediccion_lote.py           # Batch inference: input CSV → output CSV + predicciones
 │   ├── evaluacion_rondas.py         # Evaluación por rondas de 100 txns (simula producción, detecta drift)
-│   ├── generar_muestra_sin_etiqueta.py  # Genera CSV sin IS_FRAUD (para testear API/inferencia)
+│   ├── generar_muestra_sin_etiqueta.py  # Genera CSV+JSON sin IS_FRAUD con perfiles (mixto/sospechoso/fraude)
 │   ├── save_models.py               # Legacy (reemplazado por regenerate_models.py)
 │   ├── __init__.py
 │   ├── saved_models/
 │   │   ├── feature_engineering.py   # Copia autónoma para carga sin scripts/ en sys.path
 │   │   ├── modelo_07_v1.pkl         # Pipeline FE v3 + Scaler + Imputer + LGB + XGB + w + thr
-│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2 (mejorado)
+│   │   └── modelo_08_v2.pkl         # Idem, entrenado con v2
 │   └── synthetic_data/
 │       ├── generar_dataset_fraude.py          # Generador v1 (señal débil)
-│       ├── generar_dataset_fraude_mejorado.py # Generador v2 (señal fuerte)
+│       ├── generar_dataset_fraude_v2.py # Generador v2 (señal fuerte)
 │       └── sdv/
 │           └── generar_dataset_sdv.py         # Generador alternativo con SDV
 │
@@ -56,7 +56,7 @@ C:\Dev\NovaPay_ML\
 │
 ├── data/
 │   ├── dataset_fraude.csv           # v1 (10K txns, ~15% fraude)
-│   └── dataset_fraude_mejorado.csv  # v2 (10K txns, ~15% fraude, señal mejorada)
+│   └── dataset_fraude_v2.csv  # v2 (10K txns, ~15% fraude, señal mejorada)
 │
 ├── docs/
 │   ├── contexto_ml.md               # ← ESTE DOCUMENTO
@@ -117,7 +117,7 @@ IS_FRAUD, IMPACTO_FRAUDE
 - **Mecanismo**: probabilidad aditiva con 15+ factores, cada uno contribuye 2-25%. Las features se generan independientemente con la misma distribución para todas las transacciones.
 - **Problema**: la única dependencia features → label es la fórmula de probabilidad aditiva. Las distribuciones de features entre fraude y no-fraude son casi idénticas.
 
-### 3.3 Generador v2 (`generar_dataset_fraude_mejorado.py`)
+### 3.3 Generador v2 (`generar_dataset_fraude_v2.py`)
 
 - **Señal fuerte**: PR-AUC ~0.96, AUC-ROC ~0.99
 - **Tasa de fraude**: ~15%
@@ -230,7 +230,7 @@ Clase `FeatureEngineer` (hereda de `BaseEstimator, TransformerMixin`). Versión 
 **Cómo usarlo**:
 ```powershell
 cd C:\Dev\NovaPay_ML
-# Para v2 (mejorado)
+# Para v2
 jupyter nbconvert --execute --to notebook notebooks\09_pipeline_completo.ipynb
 # Para v1, cambiar DATASET = 'v1' en la celda de configuración
 ```
@@ -281,7 +281,7 @@ Cada `.pkl` contiene el **pipeline completo** en un solo archivo:
 | Archivo | Dataset | PR-AUC test | AUC-ROC test | Precision | Recall | F1 |
 |---------|---------|:-----------:|:-----------:|:---------:|:------:|:--:|
 | `saved_models/modelo_07_v1.pkl` | v1 (original) | 0.3236 | 0.7135 | 19.7% | 87.2% | 0.3215 |
-| `saved_models/modelo_08_v2.pkl` | v2 (mejorado) | 0.9640 | 0.9874 | 77.2% | 95.3% | 0.8529 |
+| `saved_models/modelo_08_v2.pkl` | v2 | 0.9640 | 0.9874 | 77.2% | 95.3% | 0.8529 |
 
 ### 6.3 Carga e inferencia
 
@@ -378,7 +378,7 @@ clase desbalanceada. El ensemble ponderado supera consistentemente a cada modelo
 - `inference_example.py`: ejemplo funcional de inferencia (ahora usa `sys.path.insert(0, pkl_dir)`)
 - `prediccion_lote.py`: batch inference — CSV de entrada → CSV con predicciones añadidas
 - `evaluacion_rondas.py`: evalúa modelo en rondas de 100 txns, simula producción, detecta drift (PSI)
-- `generar_muestra_sin_etiqueta.py`: genera CSV sin IS_FRAUD para testear API/inferencia
+- `generar_muestra_sin_etiqueta.py`: genera CSV+JSON sin IS_FRAUD con perfiles de riesgo (mixto/sospechoso/fraude)
 - `residuos_y_evaluacion.md`: estudio completo de técnicas de análisis de residuos
 - `regenerate_models.py`: script que regenera ambos modelos
 - `app.py`: API FastAPI para inferencia en producción (v5.0.0 con validación Pydantic v2)
@@ -461,11 +461,17 @@ Entrena v1 y v2 desde cero con pipeline completo (FE v3 → KNNImputer → Scale
 # Dataset original v1 (señal débil, 10K transacciones)
 python scripts\synthetic_data\generar_dataset_fraude.py
 
-# Dataset mejorado v2 (señal fuerte, 10K transacciones)
-python scripts\synthetic_data\generar_dataset_fraude_mejorado.py
+# Dataset v2 (señal fuerte, 10K transacciones)
+python scripts/synthetic_data/generar_dataset_fraude_v2.py
 
-# Dataset sin etiqueta (para testear API/inferencia)
-python scripts\generar_muestra_sin_etiqueta.py --n 500 --output data/muestra_test.csv
+# Dataset sin etiqueta (perfil mixto, 200 tx)
+python scripts/generar_muestra_sin_etiqueta.py
+
+# Dataset con perfil fraudulento
+python scripts/generar_muestra_sin_etiqueta.py --perfil fraude
+
+# Generar los 3 perfiles a la vez
+python scripts/generar_muestra_sin_etiqueta.py --perfil todo
 ```
 
 Los datasets etiquetados se guardan en `data/`. El dataset sin etiqueta se guarda donde se indique.
@@ -495,7 +501,7 @@ python scripts\prediccion_lote.py --input data/muestra_test.csv --output data/pr
 
 ```powershell
 # Paso 1: batch inference
-python scripts\prediccion_lote.py --input data/dataset_fraude_mejorado.csv --output data/predicciones_v2.csv --modelo v2
+python scripts/prediccion_lote.py --input data/dataset_fraude_v2.csv --output data/predicciones_v2.csv --modelo v2
 
 # Paso 2: separar en dos JSON
 python scripts\separar_prediccion_json.py --input data/predicciones_v2.csv --output-dir data/

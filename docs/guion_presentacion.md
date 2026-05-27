@@ -323,6 +323,11 @@ is_fraud = int(prob >= thr)
 "No nos importa solo la precisión global. Importa cuántos fraudes capturamos
 con los recursos limitados del equipo de analistas."
 
+**¿Qué mide exactamente?** Recall@k ordena TODAS las transacciones por
+probabilidad descendente y mira cuántos fraudes hay en el top k. Simula un
+sistema de **triaje**: si el analista solo puede revisar k alertas y elige
+las k más sospechosas del total, ¿cuántos fraudes pesca?
+
 ```python
 # Simulación: 200.000 tx/día, 200 alertas/día → top 0.1%
 k_pct = 0.001
@@ -332,15 +337,54 @@ frauds_in_top_k = int(y_test[top_k_idx].sum())
 recall_at_k = frauds_in_top_k / total_frauds_test
 ```
 
-**Resultado v3**: Recall@k = 0.0283 — es decir, el modelo captura el 2.83% de todos
-los fraudes en solo las primeras 200 alertas. En términos absolutos:
-~20 fraudes/día detectados de ~700 diarios, con precisión en alertas del 100%.
+**¿Y esto cómo se relaciona con lo que realmente ve el analista?**
+
+En producción el flujo es:
+
+```
+Modelo puntúa 200.000 tx
+       ↓
+Threshold por canal → se flagran ~7.500 tx como fraude
+       ↓
+De esas 7.500, las 200 más sospechosas van al analista
+       ↓
+Analista revisa esas 200
+```
+
+El analista **no** recibe todas las 7.500, recibe las 200 con mayor probabilidad
+del conjunto flagrado. Pero como cualquier transacción no flagrada tiene
+probabilidad menor que cualquier flagrada, las 200 más probables del conjunto
+flagrado **son exactamente las 200 más probables del total**. Por lo tanto,
+el cálculo actual (top k del total) es equivalente al escenario real
+(top k de las flagradas).
+
+**Resultado v3**: Recall@k = 0.0283 — el modelo captura el 2.83% de todos
+los fraudes en las primeras 200 alertas. **28× más que el azar** (0.1%).
 
 **Pregunta típica**: "¿Solo 2.83%? Eso parece bajo."
-**Respuesta**: "Con 200 alertas al día sobre 200.000 transacciones, el azar capturaría
-el 0.1% de los fraudes. Nosotros capturamos 28× más que el azar.
-Además, las 200 alertas tienen precisión 100% —ninguna es falso positivo.
-El resto de fraudes se detectan vía reglasheurísticas y revisión manual escalonada."
+**Respuesta**: "El recall@k no mide lo buena que es la detección, mide
+cuánto fraude podemos cazar con **recursos limitados**. 200 alertas es el 0.1%
+de las transacciones. Si pudiéramos revisar más, capturaríamos mucho más.
+Mire la curva completa:"
+
+| k (alertas/día) | % tx revisadas | Fraudes capturados | Recall@k | Precisión en alertas |
+|---|---|---|---|---|
+| 200 | 0.1% | 20 | 2.8% | 100% |
+| 1.000 | 0.5% | 90 | 12.9% | 90% |
+| 2.000 | 1.0% | 164 | 23.4% | 82% |
+| 5.000 | 2.5% | 320 | 45.7% | 64% |
+| 10.000 | 5.0% | 430 | 61.4% | 43% |
+
+**Interpretación**: con 200 alertas/día la precisión es 100% pero solo
+tocamos el 2.8% de los fraudes. Con 2.000 alertas/día ya capturamos el 23.4%
+de todos los fraudes, aunque la precisión baja al 82% (18% son falsos positivos).
+La limitación no es el modelo — es **cuántas alertas puede revisar el equipo**.
+
+**¿Y el recall del 84.7% qué significa entonces?** Ese es el recall **global**
+del modelo: de cada 100 fraudes, el modelo **detecta** ~85 (prob >= threshold).
+Pero de esos 85, el analista solo alcanza a revisar una fracción. El resto
+quedan en la cola de alertas sin revisar hasta que haya capacidad. El recall@k
+mide cuántos de los 85 logramos **revisar** con los recursos disponibles."
 
 ### 4.6 Calibración — Brier Score y ECE
 
@@ -490,7 +534,65 @@ class Prediccion(BaseModel):
 Garantiza que nunca se devuelva una probabilidad fuera de rango aunque
 haya un error numérico en el ensemble.
 
-### 4.9 Simulación de producción con `evaluacion_rondas.py`
+### 4.10 Generación de datos de prueba con perfiles de riesgo — `generar_muestra_sin_etiqueta.py`
+
+El script genera transacciones sintéticas **sin etiqueta** (sin `IS_FRAUD`) para
+probar la API o el pipeline de inferencia sin depender de datos reales.
+Incluye **3 perfiles de riesgo** para evaluar cómo responde el modelo ante
+distintos patrones:
+
+```python
+PERFILES = {
+    'mixto': {
+        'label': 'Muestra mixta (patrón estándar)',
+        'p_dispositivo_reconocido': 0.85,
+        'p_cross_border': 0.10,
+        'p_destino_alto_riesgo': 0.12,
+        'p_estados_tarjeta': [0.80, 0.05, 0.08, 0.04, 0.03],
+        'importe_log_mean': 5,      # ~150€
+        'poisson_tx_hora': 2,
+        'p_night': 0.15,
+    },
+    'sospechoso': {
+        'p_dispositivo_reconocido': 0.50,
+        'p_cross_border': 0.40,
+        'importe_log_mean': 6,      # ~400€
+        'poisson_tx_hora': 5,
+    },
+    'fraude': {
+        'p_dispositivo_reconocido': 0.20,
+        'p_cross_border': 0.70,
+        'importe_log_mean': 7,      # ~1100€
+        'poisson_tx_hora': 10,
+    },
+}
+```
+
+Cada perfil modifica las distribuciones de generación para crear señales
+de riesgo más o menos marcadas. Esto permite **testear el comportamiento
+del modelo en diferentes escenarios** antes de desplegar.
+
+```powershell
+# Un perfil específico
+python scripts/generar_muestra_sin_etiqueta.py --perfil fraude
+# → data/muestra_fraude.csv + .json
+
+# Todos a la vez
+python scripts/generar_muestra_sin_etiqueta.py --perfil todo
+# → muestra_mixto, muestra_sospechoso, muestra_fraude (CSV+JSON cada uno)
+
+# Evaluación rápida contra la API
+python -c "
+import json, requests
+for p in ['mixto', 'sospechoso', 'fraude']:
+    with open(f'data/muestra_{p}.json') as f:
+        r = requests.post('http://localhost:8000/predict/batch', json=json.load(f))
+    d = r.json()
+    print(f'{p}: {d[\"fraudes\"]}/{d[\"total\"]} fraudes ({d[\"fraudes\"]/d[\"total\"]*100:.1f}%)')
+"
+```
+
+### 4.11 Simulación de producción con `evaluacion_rondas.py`
 
 El script `evaluacion_rondas.py` es un **simulador de producción** que:
 
@@ -622,7 +724,7 @@ Se despliega en producción
 | Modelo | Archivo | Dataset | Features | Threshold |
 |---|---|---|---|---|
 | v1 | modelo_07_v1.pkl | dataset_fraude.csv (10K, 15%) | 67 | F2 global |
-| v2 | modelo_08_v2.pkl | dataset_fraude_mejorado.csv (10K, 15%) | 67 | F2 global |
+| v2 | modelo_08_v2.pkl | dataset_fraude_v2.csv (10K, 15%) | 67 | F2 global |
 | v3 | modelo_09_v3.pkl | dataset_fraude_v3.csv (100K, 3.5%) | 69 | F2 por canal |
 
 Cada .pkl es autocontenido: incluye el código fuente de FeatureEngineer embebido,
@@ -1009,12 +1111,87 @@ python scripts/evaluacion_rondas.py `
   --modelo v3 --rondas 50 --drift suave --output resultados.csv
 ```
 
-### Demo 4: Generar muestra sin etiqueta
+### Demo 4: Generar muestra sin etiqueta (múltiples perfiles)
 
 ```powershell
+# Muestra estándar (mixto, 200 tx)
 python scripts/generar_muestra_sin_etiqueta.py
-# → Genera data/muestra_sin_etiqueta.csv + data/muestra_sin_etiqueta.json
-#    con 200 transacciones sintéticas sin IS_FRAUD (simula datos de producción)
+# → data/muestra_sin_etiqueta.csv + data/muestra_sin_etiqueta.json
+
+# Perfil fraudulento (señales fuertes de fraude)
+python scripts/generar_muestra_sin_etiqueta.py --perfil fraude
+# → data/muestra_fraude.csv + data/muestra_fraude.json
+
+# Perfil sospechoso (señales intermedias)
+python scripts/generar_muestra_sin_etiqueta.py --perfil sospechoso
+# → data/muestra_sospechoso.csv + data/muestra_sospechoso.json
+
+# Generar todos los perfiles a la vez
+python scripts/generar_muestra_sin_etiqueta.py --perfil todo
+# → Crea 3 pares CSV+JSON: muestra_mixto, muestra_sospechoso, muestra_fraude
+```
+
+**Perfiles disponibles:**
+
+| Perfil | dispositivo_reconocido | cross_border | importe medio | tx/hora |
+|---|---|---|---|---|
+| `mixto` | 85% | 10% | ~150€ | 2 |
+| `sospechoso` | 50% | 40% | ~400€ | 5 |
+| `fraude` | 20% | 70% | ~1100€ | 10 |
+
+### Demo 5: Pasar JSON al modelo para evaluar
+
+#### Opción A — vía API (una transacción)
+
+```powershell
+# Con curl (PowerShell)
+$body = Get-Content data/muestra_sin_etiqueta.json -Raw | ConvertFrom-Json
+$primera = $body[0] | ConvertTo-Json
+curl -X POST http://localhost:8000/predict `
+  -H "Content-Type: application/json" `
+  -d $primera
+```
+
+#### Opción B — vía API (lote, todas las transacciones)
+
+```powershell
+curl -X POST http://localhost:8000/predict/batch `
+  -H "Content-Type: application/json" `
+  -d (Get-Content data/muestra_sin_etiqueta.json -Raw)
+```
+
+#### Opción C — vía batch script (CSV)
+
+```powershell
+python scripts/prediccion_lote.py `
+  --input data/muestra_sin_etiqueta.csv `
+  --output data/resultados_muestra.csv `
+  --modelo v3
+```
+
+#### Opción D — Script Python rápido para evaluar los 3 perfiles
+
+```python
+# evaluar_perfiles.py — comparar cómo responde el modelo a cada perfil
+import json, requests
+
+API = "http://localhost:8000/predict/batch"
+
+for perfil in ['mixto', 'sospechoso', 'fraude']:
+    with open(f'data/muestra_{perfil}.json', encoding='utf-8') as f:
+        data = json.load(f)
+
+    resp = requests.post(API, json=data).json()
+    fraudes = resp['fraudes']
+    total = resp['total']
+    print(f"{perfil:12s}: {fraudes}/{total} marcadas como fraude ({fraudes/total*100:.1f}%)")
+```
+
+Salida esperada:
+```
+mixto       : 0/200 marcadas como fraude (0.0%)
+sospechoso  : 8/200 marcadas como fraude (4.0%)
+fraude      : 67/200 marcadas como fraude (33.5%)
 ```
 
 ---
