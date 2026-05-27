@@ -9,4 +9,4 @@ services:
       - ./app.py:/app/app.py        # hot-reload: los cambios en app.py se reflejan al instante
       - ./model:/app/model        
     environment:
-      ENV: development    
+      ENV: development  
