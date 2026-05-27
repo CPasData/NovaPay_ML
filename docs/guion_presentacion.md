@@ -380,6 +380,53 @@ tocamos el 2.8% de los fraudes. Con 2.000 alertas/día ya capturamos el 23.4%
 de todos los fraudes, aunque la precisión baja al 82% (18% son falsos positivos).
 La limitación no es el modelo — es **cuántas alertas puede revisar el equipo**.
 
+#### El escenario propuesto — 4 analistas, 1.000 alertas/día
+
+| Concepto | Por analista | Total equipo (4) |
+|---|---|---|
+| Alertas express/día | 200 | 800 |
+| Alertas complejas/día | 50 | 200 |
+| **Total revisado/día** | **250** | **1.000** |
+| Fraudes capturados/día | ~23 | ~90 |
+| Falsos positivos/día | ~25 | ~100 |
+
+Con 1.000 alertas/día el **Recall@k = 12.9%**. De los ~700 fraudes diarios,
+se capturan ~90. La precisión en esas 1.000 alertas es ~90% (solo 100 falsos
+positivos). El resto de fraudes (~610) los detecta el modelo pero quedan en
+la cola de revisión hasta que haya más capacidad.
+
+#### Comparativa completa — recall total vs recall@k según capacidad
+
+| Capacidad | Analistas | Alertas/día | Recall@k | Fraudes capturados/día | Falsos positivos/día | Fraudes no revisados |
+|---|---|---|---|---|---|---|
+| **Mínima** | 1 | 200 | 2.8% | 20 | 0 | ~680 |
+| **Propuesta** | 4 | 1.000 | 12.9% | 90 | ~100 | ~610 |
+| **Media** | 10 | 2.000 | 23.4% | 164 | ~295 | ~536 |
+| **Alta** | 25 | 5.000 | 45.7% | 320 | ~1.800 | ~380 |
+| **Masiva** | 50 | 10.000 | 61.4% | 430 | ~5.700 | ~270 |
+| **Recall global** | — | ~7.500* | 84.7% | 593 | ~1.600 | 0 |
+
+*\*El recall global (84.7%) revisa todas las ~7.500 transacciones que el modelo marca como fraude.
+Con 1.000 alertas/día solo alcanzamos a cubrir una parte.*
+
+#### Relación coste-beneficio
+
+Supuesto: 30.000 €/año por analista (coste empresa, España).
+
+| Equipo | Coste anual | Alertas/día | Fraudes/día | Coste por fraude capturado |
+|---|---|---|---|---|
+| 1 analista | 30.000 € | 200 | 20 | **4,1 €/fraude** |
+| 4 analistas | 120.000 € | 1.000 | 90 | **3,7 €/fraude** |
+| 10 analistas | 300.000 € | 2.000 | 164 | **5,0 €/fraude** |
+| 25 analistas | 750.000 € | 5.000 | 320 | **6,4 €/fraude** |
+
+**Interpretación**: el coste por fraude capturado es mínimo con 4 analistas
+(3,7 €/fraude). A partir de ahí, cada analista adicional captura fraudes
+cada vez más difíciles (probabilidad más baja), por lo que el coste por
+frade sube. La decisión de contratar más allá de 4 depende de:
+cuánto vale un fraude no detectado. Si cada fraude cuesta 500 € a NovaPay,
+contratar hasta 25 analistas sigue siendo rentable (6,4 € < 500 €).
+
 **¿Y el recall del 84.7% qué significa entonces?** Ese es el recall **global**
 del modelo: de cada 100 fraudes, el modelo **detecta** ~85 (prob >= threshold).
 Pero de esos 85, el analista solo alcanza a revisar una fracción. El resto
