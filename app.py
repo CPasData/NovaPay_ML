@@ -15,7 +15,7 @@ import pandas as pd
 app = FastAPI(
     title="NovaPay ML API",
     description="API de detección de fraude para NovaPay",
-    version="4.1.0"
+    version="5.0.0"
 )
 
 # ============================================================
@@ -23,7 +23,8 @@ app = FastAPI(
 # Un solo pkl con todo dentro:
 # fe, scaler, imputer, lgb_model, xgb_model, best_w, best_t
 # ============================================================
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", "modelo_08_v2.pkl")
+MODEL_NAME = "modelo_09_v3.pkl"
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model", MODEL_NAME)
 modelo     = joblib.load(MODEL_PATH)
 
 fe        = modelo['fe']         # FeatureEngineer
@@ -31,12 +32,17 @@ scaler    = modelo['scaler']     # StandardScaler
 imputer   = modelo['imputer']    # KNNImputer
 lgb       = modelo['lgb_model']  # LightGBM
 xgb_m     = modelo['xgb_model']  # XGBoost
-best_w    = modelo['best_w']     # peso del ensemble (LGB=30%, XGB=70%)
-best_t    = modelo['best_t']     # threshold de decisión (0.314)
+best_w    = modelo['best_w']     # peso del ensemble
+best_t    = modelo['best_t']     # threshold de decisión global
 num_feats = modelo['num_feats']  # features numéricas para scaler e imputer
 
-print(f"Modelo cargado correctamente")
+per_channel_thr = modelo.get('per_channel_thresholds', {})
+metadata_extra  = modelo.get('metadata', {})
+
+print(f"Modelo cargado: {MODEL_NAME}")
 print(f"Threshold: {best_t:.4f} | Peso LGB: {best_w} | Peso XGB: {1-best_w}")
+if per_channel_thr:
+    print(f"Thresholds por canal: {per_channel_thr}")
 
 # ============================================================
 # MODELO DE DATOS — lo que recibe la API
@@ -132,12 +138,12 @@ def calcular_impacto(is_fraud: int, importe: float) -> int:
 # ============================================================
 # FUNCIÓN PRINCIPAL DE PREDICCIÓN
 # Orden del pipeline:
-# 1. FeatureEngineer → calcula 67 features
+# 1. FeatureEngineer → calcula 69 features (v4)
 # 2. Extraer campos calculados ANTES de imputer y scaler
-# 3. Imputer → imputa nulos en las 67 features
-# 4. Scaler  → escala las features numéricas
+# 3. Scaler  → escala las features numéricas
+# 4. Imputer → imputa nulos en las 69 features
 # 5. Ensemble LGB + XGB → predice probabilidad
-# 6. Threshold 0.314 → decides is_fraud
+# 6. Threshold por canal (si existe) o global → decide is_fraud
 # ============================================================
 def predecir(transaccion: Transaccion) -> Prediccion:
     datos  = transaccion.model_dump()
@@ -164,8 +170,10 @@ def predecir(transaccion: Transaccion) -> Prediccion:
     prob_xgb = xgb_m.predict_proba(X)[:, 1]
     prob     = best_w * prob_lgb + (1 - best_w) * prob_xgb
 
-    # PASO 6 — Threshold
-    is_fraud       = int((prob[0] >= best_t))
+    # PASO 6 — Threshold (por canal si está disponible, sino global)
+    canal = transaccion.tipo_transaccion
+    thr   = per_channel_thr.get(canal, best_t)
+    is_fraud       = int((prob[0] >= thr))
     prob_fraud     = float(round(prob[0], 4))
     impacto_fraude = calcular_impacto(is_fraud, transaccion.importe_transaccion)
 
@@ -195,17 +203,14 @@ def predecir(transaccion: Transaccion) -> Prediccion:
 
 @app.get("/health", tags=["Sistema"])
 def health():
-    """
-    Comprueba que la API esta funcionando.
-    Este endpoint no espera datos, solo se llama.
-    """
     return {
         "status"   : "ok",
-        "version"  : "4.1.0",
-        "modelo"   : "modelo_08_v2",
-        #"ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
-        #"threshold": round(best_t, 4),
-        #"metadata" : modelo.get('metadata', {})
+        "version"  : "5.0.0",
+        "modelo"   : MODEL_NAME,
+        "ensemble" : f"LGB {best_w:.0%} + XGB {1-best_w:.0%}",
+        "threshold_global": round(best_t, 4),
+        "thresholds_canal": per_channel_thr,
+        "recall_at_k"     : metadata_extra.get("recall_at_k"),
     }
 
 

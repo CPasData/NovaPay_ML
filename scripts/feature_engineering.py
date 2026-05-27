@@ -183,12 +183,16 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
             X['diff_hora_cliente'] = (
                 X['hour'] - X['id_cliente'].map(self._client_hour_means)
             ).fillna(0).abs()
-        # Deviation from client's mean amount (if fitted)
-        if self._client_amount_means and 'id_cliente' in X.columns:
-            X['diff_importe_cliente'] = _safe_ratio(
-                (X['importe_transaccion'] - X['id_cliente'].map(self._client_amount_means)).abs(),
-                X['id_cliente'].map(self._client_amount_means).fillna(1).replace(0, 1)
+        # Deviation from client's mean amount — z-score real usando campos del propio registro
+        if 'importe_medio_mensual' in X.columns and 'desviacion_estandar_mensual' in X.columns:
+            std = X['desviacion_estandar_mensual'].replace(0, 1)
+            X['diff_importe_zscore'] = (
+                (X['importe_transaccion'] - X['importe_medio_mensual']).abs() / std
             )
+            X['diff_importe_signed'] = (
+                (X['importe_transaccion'] - X['importe_medio_mensual']) / std
+            )
+            X['importe_anomalo'] = (X['diff_importe_zscore'] > 3).astype(int)
         # Ratio vs client's typical txn count
         if self._client_txn_per_day and 'id_cliente' in X.columns:
             X['ratio_actividad_cliente'] = _safe_ratio(
@@ -207,13 +211,9 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
             ).astype(int)
         # Night + high velocity interaction
         if 'is_night' in X.columns and 'alta_velocidad' in X.columns:
-            X['night_velocity'] = (X['is_night'] == 1) & (X['alta_velocidad'] == 1).astype(int)
-        # Amount near limit + round amount interaction
-        if 'txn_vs_limit_pct' in X.columns:
-            X['high_ratio_redondeado'] = (
-                (X['txn_vs_limit_pct'] > 0.85) &
-                (X['importe_transaccion'] % 100 < 1)
-            ).astype(int)
+            X['night_velocity'] = ((X['is_night'] == 1) & (X['alta_velocidad'] == 1)).astype(int)
+        # Amount near limit (se eliminó high_ratio_redondeado: la condición de importe redondo
+        # destruía la señal; txn_vs_limit_pct ya captura el ratio alto por sí sola)
 
         # === Codificación de categóricas ===
         for col in CAT_COLS:
