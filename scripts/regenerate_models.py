@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.impute import KNNImputer
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import (roc_auc_score, average_precision_score,
     precision_score, recall_score, fbeta_score, brier_score_loss)
 from sklearn.calibration import CalibratedClassifierCV
@@ -65,7 +65,7 @@ datasets = [
         'name': 'v3',
         'label': 'v3 (3% fraude)',
         'data_path': base.parent / 'data' / 'dataset_fraude_v3.csv',
-        'savename': 'modelo_09_v3.pkl',
+        'savename': 'modelo_11_v3.pkl',
         'lgb_params': {
             'learning_rate': 0.1, 'min_child_samples': 100,
             'n_estimators': 200, 'num_leaves': 15,
@@ -114,7 +114,7 @@ def train_pipeline(cfg):
     X_test_s = X_test.copy()
     X_test_s[num_feats] = scaler.transform(X_test[num_feats])
 
-    imputer = KNNImputer(n_neighbors=5)
+    imputer = SimpleImputer(strategy='median')
     X_train_s[num_feats] = imputer.fit_transform(X_train_s[num_feats])
     X_val_s[num_feats] = imputer.transform(X_val_s[num_feats])
     X_test_s[num_feats] = imputer.transform(X_test_s[num_feats])
@@ -328,7 +328,7 @@ def train_pipeline(cfg):
 
 print('=== REGENERACI\u00d3N DE MODELOS ===')
 print(f'Feature Engineering: v4 (z-score, sin high_ratio_redondeado)')
-print(f'Pipeline: FE -> Scale -> KNNImputer -> LGB/XGB -> Ensemble -> F2 thr | per-channel thr | recall@k')
+print(f'Pipeline: FE -> Scale -> SimpleImputer(median) -> LGB/XGB -> Ensemble -> F2 thr | per-channel thr | recall@k')
 print()
 
 results = {}
@@ -349,5 +349,3 @@ for name in ['v1', 'v2', 'v3']:
           f'{m["ensemble_test_f1"]:>6.4f} {m["f2_threshold"]:>6.4f} {m["best_w"]:>7.3f} '
           f'{m.get("recall_at_k", 0):>7.4f} {m.get("brier_score", 0):>7.4f} {m.get("expected_calibration_error", 0):>7.4f}')
 
-print()
-print('OK')

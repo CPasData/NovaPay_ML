@@ -54,7 +54,6 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         self._fitted = False
         # Dicts for client-level stats (fit on train, apply on transform)
         self._client_hour_means = {}
-        self._client_amount_means = {}
         self._client_txn_per_day = {}
         self._dest_freq = {}
 
@@ -63,7 +62,6 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         self._freq_encodings = {}
         self._target_encodings = {}
         self._client_hour_means = {}
-        self._client_amount_means = {}
         self._client_txn_per_day = {}
         self._dest_freq = {}
         self._fitted = True
@@ -79,10 +77,8 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
                 X.assign(_hour=hour_series)
                 .groupby('id_cliente')['_hour'].mean().to_dict()
             )
-        if 'id_cliente' in X.columns and 'importe_transaccion' in X.columns:
-            self._client_amount_means = (
-                X.groupby('id_cliente')['importe_transaccion'].mean().to_dict()
-            )
+        # _client_amount_means eliminado: diff_importe usa z-score directo
+        # con importe_medio_mensual y desviacion_estandar_mensual del propio registro
         if 'id_cliente' in X.columns and 'media_transacciones_al_dia' in X.columns:
             self._client_txn_per_day = (
                 X.groupby('id_cliente')['media_transacciones_al_dia'].mean().to_dict()
@@ -129,7 +125,7 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         X['outflow_inflow_ratio'] = _safe_ratio(X['volumen_saliente_30_dias'], X['volumen_entrante_30_dias'])
         X['net_flow_30d'] = X['volumen_entrante_30_dias'] - X['volumen_saliente_30_dias']
         X['limite_breach_rate'] = X['veces_superar_limite_7_dias'] / 7.0
-        X['txn_intensity'] = X['numero_transacciones_ultima_hora'] / (X['tiempo_desde_ultima_transaccion'] + 1)
+        X['txn_intensity'] = X['numero_transacciones_ultima_hora'] / X['tiempo_desde_ultima_transaccion'].clip(lower=30)
         X['balance_utilization'] = X['saldo_medio_30_dias'] / (X['limite_importe_transacciones'] * 10 + 1)
         X['txn_severity'] = X['importe_transaccion'] * X['numero_transacciones_ultima_hora']
         X['tenure_years'] = X['tenure'] / 365.0
@@ -157,7 +153,7 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
 
         # --- Session features (burst detection) ---
         # Velocity: transactions per minute in current session
-        X['txn_por_minuto'] = X['numero_transacciones_ultima_hora'] / (X['tiempo_desde_ultima_transaccion'] / 60 + 1)
+        X['txn_por_minuto'] = X['numero_transacciones_ultima_hora'] / (X['tiempo_desde_ultima_transaccion'].clip(lower=30) / 60)
         # Burst indicator: >5 txn in last hour AND last txn < 5 min ago
         X['burst_rapido'] = (
             (X['numero_transacciones_ultima_hora'] > 5) &
@@ -180,9 +176,11 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         # --- Temporal deviation features ---
         # Deviation from client's mean transaction hour (if fitted)
         if self._client_hour_means and 'id_cliente' in X.columns:
-            X['diff_hora_cliente'] = (
-                X['hour'] - X['id_cliente'].map(self._client_hour_means)
-            ).fillna(0).abs()
+            diff_h = (X['hour'] - X['id_cliente'].map(self._client_hour_means)).fillna(0)
+            # Distancia circular: la diferencia máxima entre horas es 12, no 23
+            X['diff_hora_cliente'] = diff_h.abs().clip(upper=12).where(
+                diff_h.abs() <= 12, 24 - diff_h.abs()
+            )
         # Deviation from client's mean amount — z-score real usando campos del propio registro
         if 'importe_medio_mensual' in X.columns and 'desviacion_estandar_mensual' in X.columns:
             std = X['desviacion_estandar_mensual'].replace(0, 1)
@@ -212,8 +210,16 @@ class FeatureEngineer(BaseEstimator, TransformerMixin):
         # Night + high velocity interaction
         if 'is_night' in X.columns and 'alta_velocidad' in X.columns:
             X['night_velocity'] = ((X['is_night'] == 1) & (X['alta_velocidad'] == 1)).astype(int)
-        # Amount near limit (se eliminó high_ratio_redondeado: la condición de importe redondo
-        # destruía la señal; txn_vs_limit_pct ya captura el ratio alto por sí sola)
+        # Cross-border + destino alto riesgo (combinación muy potente para fraude clásico)
+        if 'cross_border' in X.columns and 'destino_alto_riesgo' in X.columns:
+            X['cross_border_high_risk'] = (
+                (X['cross_border'] == 1) & (X['destino_alto_riesgo'] == 1)
+            ).astype(int)
+        # Burst rápido + cross-border (velocidad alta desde el extranjero)
+        if 'burst_rapido' in X.columns and 'cross_border' in X.columns:
+            X['burst_cross_border'] = (
+                (X['burst_rapido'] == 1) & (X['cross_border'] == 1)
+            ).astype(int)
 
         # === Codificación de categóricas ===
         for col in CAT_COLS:
