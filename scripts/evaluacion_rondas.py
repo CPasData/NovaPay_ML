@@ -30,7 +30,7 @@ from sklearn.metrics import (
 )
 from scipy.stats import ks_2samp
 
-sys.path.append(str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from feature_engineering import FeatureEngineer
 
 
