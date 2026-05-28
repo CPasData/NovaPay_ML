@@ -274,6 +274,7 @@ C:\Dev\NovaPay_ML\
     ├── 03_feature_engineering_deep_dive.ipynb
     ├── 06_model_selection_deep_dive.ipynb
     └── residuos_y_evaluacion.md
+    └── NOVAPAY.pptx
     └── test_api.ipynb               # Notebook para pruebas de API
 ```
 
